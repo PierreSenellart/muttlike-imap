@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Pattern syntax reference
+    url: https://github.com/PierreSenellart/muttlike-imap/blob/main/docs/pattern-syntax.md
+    about: Full reference for the mutt-style pattern grammar.
+  - name: Storing the IMAP password securely
+    url: https://github.com/PierreSenellart/muttlike-imap/blob/main/docs/secrets.md
+    about: Worked examples with pass, gpg, and OS keyrings.
