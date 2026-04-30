@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `--completion {bash,zsh,fish}` flag prints a shell-completion script.
+  The zsh script offers per-flag tailoring (file paths, `(true false)`
+  enumeration for `--imap-tls`, env-var names for `--imap-password-env`,
+  live mailbox completion). Bash and fish are simpler but cover flag
+  names and the enumeration choices.
+
 ## [1.0.0]: Initial release
 
 First public release.

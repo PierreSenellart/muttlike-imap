@@ -8,6 +8,7 @@ import sys
 
 from . import __version__
 from .client import DEFAULT_TIMEOUT, list_mailboxes, search
+from .completions import SCRIPTS, get_completion
 from .config import load_config, resolve_password
 from .output import format_json, format_summary
 
@@ -52,6 +53,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Socket timeout in seconds (default {DEFAULT_TIMEOUT}).",
     )
 
+    p.add_argument(
+        "--completion",
+        choices=sorted(SCRIPTS),
+        metavar="SHELL",
+        help=(
+            "Print a shell completion script and exit. "
+            'Install with e.g. `eval "$(muttlike-imap --completion zsh)"`.'
+        ),
+    )
     p.add_argument("--version", action="version", version=f"muttlike-imap {__version__}")
     return p
 
@@ -81,6 +91,9 @@ def _build_config(args: argparse.Namespace) -> dict[str, str]:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.completion:
+        sys.stdout.write(get_completion(args.completion))
+        return 0
     try:
         config = _build_config(args)
         if args.list_mailboxes:

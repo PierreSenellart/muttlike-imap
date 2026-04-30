@@ -34,6 +34,28 @@ pip install muttlike-imap
 
 Requires Python 3.9+. No third-party dependencies.
 
+### Shell completion
+
+`muttlike-imap` ships completion scripts for zsh, bash, and fish. Add
+one of the following to your shell rc file:
+
+```sh
+# zsh (~/.zshrc)
+eval "$(muttlike-imap --completion zsh)"
+
+# bash (~/.bashrc)
+eval "$(muttlike-imap --completion bash)"
+
+# fish (~/.config/fish/config.fish, or just save the output)
+muttlike-imap --completion fish | source
+```
+
+The zsh script offers per-flag tailoring (file paths for `--config`,
+`(true false)` for `--imap-tls`, env-var names for
+`--imap-password-env`, live mailbox completion via
+`--list-mailboxes`). Bash and fish provide flag-name completion plus
+the same enumerations where applicable.
+
 ## Configure
 
 `muttlike-imap` looks for connection settings in this order (highest priority
