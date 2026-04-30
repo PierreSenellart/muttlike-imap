@@ -29,6 +29,7 @@ classifiers = [
     "Topic :: Communications :: Email",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Utilities",
+    "Typing :: Typed",
 ]
 dependencies = []
 
