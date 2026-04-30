@@ -6,7 +6,7 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.1.0]: Initial release
+## [1.0.0]: Initial release
 
 First public release.
 
@@ -36,5 +36,5 @@ First public release.
   variable.
 - Library API: `parse_pattern`, `search`, `list_mailboxes`, `load_config`.
 
-[Unreleased]: https://github.com/PierreSenellart/muttlike-imap/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v0.1.0
+[Unreleased]: https://github.com/PierreSenellart/muttlike-imap/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.0.0
