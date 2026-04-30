@@ -6,12 +6,25 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.1]
+
 ### Added
 - `--completion {bash,zsh,fish}` flag prints a shell-completion script.
   The zsh script offers per-flag tailoring (file paths, `(true false)`
   enumeration for `--imap-tls`, env-var names for `--imap-password-env`,
   live mailbox completion). Bash and fish are simpler but cover flag
   names and the enumeration choices.
+- `py.typed` marker (PEP 561) and `Typing :: Typed` classifier so
+  static type checkers pick up the package's existing type hints.
+- Top-level imports: `from muttlike_imap import search, parse_pattern,
+  compile_pattern, list_mailboxes, load_config, CompiledPattern`.
+
+### Changed
+- Refined PyPI classifiers: `Development Status :: 5 - Production/Stable`
+  (was `4 - Beta`), `Intended Audience :: Developers` and
+  `Intended Audience :: System Administrators` (replacing
+  `End Users/Desktop`), and added
+  `Topic :: Software Development :: Libraries :: Python Modules`.
 
 ## [1.0.0]: Initial release
 
@@ -43,5 +56,6 @@ First public release.
   variable.
 - Library API: `parse_pattern`, `search`, `list_mailboxes`, `load_config`.
 
-[Unreleased]: https://github.com/PierreSenellart/muttlike-imap/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/PierreSenellart/muttlike-imap/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.0.1
 [1.0.0]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.0.0
