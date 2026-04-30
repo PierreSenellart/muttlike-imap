@@ -1,0 +1,90 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "muttlike-imap"
+dynamic = ["version"]
+description = "Search IMAP mailboxes from the command line using mutt-style patterns."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+    { name = "Pierre Senellart", email = "pierre@senellart.com" },
+]
+keywords = ["imap", "mutt", "email", "search", "cli"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Communications :: Email",
+    "Topic :: Utilities",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7",
+    "pytest-cov",
+    "ruff",
+]
+
+[project.scripts]
+muttlike-imap = "muttlike_imap.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/PierreSenellart/muttlike-imap"
+Issues = "https://github.com/PierreSenellart/muttlike-imap/issues"
+Changelog = "https://github.com/PierreSenellart/muttlike-imap/blob/main/CHANGELOG.md"
+
+[tool.hatch.version]
+path = "src/muttlike_imap/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/muttlike_imap"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "PT",  # flake8-pytest-style
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E501",  # line too long (formatter handles it)
+    "PT011", # pytest.raises(ValueError): fine for parametrized "all of these raise" tests
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.coverage.run]
+source = ["src/muttlike_imap"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
