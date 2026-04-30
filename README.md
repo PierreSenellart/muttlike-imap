@@ -1,7 +1,7 @@
 # muttlike-imap
 
 [![CI](https://github.com/PierreSenellart/muttlike-imap/actions/workflows/ci.yml/badge.svg)](https://github.com/PierreSenellart/muttlike-imap/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/muttlike-imap.svg)](https://pypi.org/project/muttlike-imap/)
+[![PyPI](https://img.shields.io/pypi/v/muttlike-imap?style=flat)](https://pypi.org/project/muttlike-imap/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Search IMAP mailboxes from the command line using mutt-style patterns.
