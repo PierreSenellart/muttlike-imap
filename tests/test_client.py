@@ -27,6 +27,13 @@ def test_decode_header_encoded_word():
     assert client.decode_header(encoded) == "Héllo wörld"
 
 
+def test_decode_header_unknown_charset():
+    # Some mailers emit unknown-8bit; must not raise, falls back to utf-8
+    encoded = "=?unknown-8bit?Q?Hello?="
+    result = client.decode_header(encoded)
+    assert "Hello" in result
+
+
 def test_get_preview_plain():
     msg = email.message_from_string("Subject: x\n\nHello world")
     assert client.get_preview(msg).startswith("Hello world")

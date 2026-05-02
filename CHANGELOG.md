@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.2]
+
+### Fixed
+- `decode_header` no longer raises `LookupError` on headers with an
+  unrecognised charset label such as `unknown-8bit`; falls back to UTF-8.
+
 ## [1.0.1]
 
 ### Added
@@ -56,6 +62,7 @@ First public release.
   variable.
 - Library API: `parse_pattern`, `search`, `list_mailboxes`, `load_config`.
 
-[Unreleased]: https://github.com/PierreSenellart/muttlike-imap/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/PierreSenellart/muttlike-imap/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.0.2
 [1.0.1]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.0.1
 [1.0.0]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.0.0
