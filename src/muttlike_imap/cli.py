@@ -7,7 +7,7 @@ import socket
 import sys
 
 from . import __version__
-from .client import DEFAULT_TIMEOUT, list_mailboxes, search
+from .client import DEFAULT_TIMEOUT, fetch_by_uids, list_mailboxes, search
 from .completions import SCRIPTS, get_completion
 from .config import load_config, resolve_password
 from .output import format_json, format_summary
@@ -24,6 +24,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit", type=int, default=10, help="Maximum number of results (default: 10).")
     p.add_argument("--mailbox", default="INBOX", help="IMAP folder to search (default: INBOX).")
     p.add_argument("--summary", action="store_true", help="Human-readable output instead of JSON.")
+    p.add_argument("--body", action="store_true", help="Include full body text in output.")
+    p.add_argument(
+        "--uid",
+        nargs="+",
+        metavar="UID",
+        help="Fetch specific messages by UID instead of searching.",
+    )
     p.add_argument(
         "--list-mailboxes", action="store_true", help="List available IMAP folders and exit."
     )
@@ -101,14 +108,24 @@ def main(argv: list[str] | None = None) -> int:
                 print(name)
             return 0
         me = args.me or config.get("USER", "")
-        results = search(
-            config,
-            args.pattern,
-            limit=args.limit,
-            mailbox=args.mailbox,
-            me=me,
-            timeout=args.timeout,
-        )
+        if args.uid:
+            results = fetch_by_uids(
+                config,
+                args.uid,
+                mailbox=args.mailbox,
+                include_body=args.body,
+                timeout=args.timeout,
+            )
+        else:
+            results = search(
+                config,
+                args.pattern,
+                limit=args.limit,
+                mailbox=args.mailbox,
+                me=me,
+                timeout=args.timeout,
+                include_body=args.body,
+            )
         print(format_summary(results) if args.summary else format_json(results))
         return 0
     except socket.timeout:

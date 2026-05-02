@@ -1,6 +1,6 @@
 """Mutt-style pattern search over IMAP."""
 
-from .client import list_mailboxes, search
+from .client import fetch_by_uids, list_mailboxes, search
 from .config import load_config
 from .parser import CompiledPattern, compile_pattern, parse_pattern
 
@@ -10,6 +10,7 @@ __all__ = [
     "CompiledPattern",
     "__version__",
     "compile_pattern",
+    "fetch_by_uids",
     "list_mailboxes",
     "load_config",
     "parse_pattern",

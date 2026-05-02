@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `--body` flag: include full plain-text body in output (JSON `body` key;
+  shown in place of `Preview:` in `--summary` output).
+- `--uid UID [UID ...]` flag: fetch specific messages by UID without searching.
+  Composable with `--body` and `--mailbox`.
+- Library: `fetch_by_uids()` function, now exported from the top-level package.
+
 ## [1.0.2]
 
 ### Fixed

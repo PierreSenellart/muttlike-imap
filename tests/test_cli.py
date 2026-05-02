@@ -138,3 +138,28 @@ class TestMain:
         rc = cli.main(["~U"])
         assert rc == 1
         assert "not configured" in capsys.readouterr().err
+
+    def test_body_flag_adds_body_key(self, cli_env, fake_imap_class, capsys):
+        fake_imap_class["search_response"] = ("OK", [b"1"])
+        rc = cli.main(["~U", "--body"])
+        assert rc == 0
+        import json
+        results = json.loads(capsys.readouterr().out)
+        assert len(results) == 1
+        assert "body" in results[0]
+
+    def test_uid_flag_fetches_by_uid(self, cli_env, fake_imap_class, capsys):
+        rc = cli.main(["--uid", "42", "--body"])
+        assert rc == 0
+        import json
+        results = json.loads(capsys.readouterr().out)
+        assert len(results) == 1
+        assert results[0]["uid"] == "42"
+        assert "body" in results[0]
+
+    def test_uid_flag_multiple(self, cli_env, fake_imap_class, capsys):
+        rc = cli.main(["--uid", "1", "2"])
+        assert rc == 0
+        import json
+        results = json.loads(capsys.readouterr().out)
+        assert len(results) == 2

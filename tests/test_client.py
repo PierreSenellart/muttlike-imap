@@ -223,6 +223,16 @@ class TestSearch:
         assert results[0]["from"] == "alice@example.com"
         assert results[0]["subject"] == "hello"
         assert results[0]["preview"] == "body"
+        assert "body" not in results[0]
+
+    def test_include_body_adds_body_key(self, monkeypatch):
+        long_text = b"x" * 1000
+        msg = b"From: alice@example.com\r\nSubject: s\r\n\r\n" + long_text
+        self._patch_with_search_results(monkeypatch, [("OK", [b"1"])], fetch_message=msg)
+        results = client.search(_config(), "~U", limit=10, mailbox="INBOX", include_body=True)
+        assert len(results) == 1
+        assert results[0]["body"] == "x" * 1000
+        assert len(results[0]["preview"]) == 300
 
     def test_unicode_mailbox_encoded_to_utf7(self, monkeypatch):
         self._patch_with_search_results(monkeypatch, [("OK", [b""])])
@@ -273,6 +283,70 @@ class TestSearch:
         results = client.search(_config(), "~U", limit=3, mailbox="INBOX")
         # The script keeps the LAST `limit` UIDs, then reverses (most-recent first)
         assert [r["uid"] for r in results] == ["5", "4", "3"]
+
+
+class TestFetchByUids:
+    def _patch(self, monkeypatch, fetch_responses=None):
+        def factory(host, port=993):
+            inst = FakeIMAP(host, port)
+            if fetch_responses:
+                inst.fetch_responses = fetch_responses
+            self.inst = inst
+            return inst
+
+        monkeypatch.setattr(imaplib, "IMAP4_SSL", factory)
+
+    def test_returns_records_for_given_uids(self, monkeypatch):
+        raw = b"From: bob@example.com\r\nSubject: hi\r\n\r\nhello world"
+        prefix = b'1 (INTERNALDATE "01-Jan-2026 00:00:00 +0000" RFC822 {N}'
+        self._patch(monkeypatch, {b"42": ("OK", [(prefix, raw)])})
+        results = client.fetch_by_uids(_config(), ["42"], mailbox="INBOX")
+        assert len(results) == 1
+        assert results[0]["uid"] == "42"
+        assert results[0]["from"] == "bob@example.com"
+        assert results[0]["preview"] == "hello world"
+        assert "body" not in results[0]
+
+    def test_include_body(self, monkeypatch):
+        long_text = b"y" * 500
+        raw = b"From: bob@example.com\r\nSubject: s\r\n\r\n" + long_text
+        prefix = b'1 (INTERNALDATE "01-Jan-2026 00:00:00 +0000" RFC822 {N}'
+        self._patch(monkeypatch, {b"7": ("OK", [(prefix, raw)])})
+        results = client.fetch_by_uids(_config(), ["7"], include_body=True)
+        assert results[0]["body"] == "y" * 500
+        assert len(results[0]["preview"]) == 300
+
+    def test_select_failure_raises(self, monkeypatch):
+        def factory(host, port=993):
+            inst = FakeIMAP(host, port)
+            inst.select_responses = {"NoSuch": ("NO", [b"missing"])}
+            return inst
+
+        monkeypatch.setattr(imaplib, "IMAP4_SSL", factory)
+        with pytest.raises(RuntimeError, match="cannot select"):
+            client.fetch_by_uids(_config(), ["1"], mailbox="NoSuch")
+
+    def test_skips_failed_fetch(self, monkeypatch):
+        self._patch(monkeypatch, {b"99": ("NO", [None])})
+        results = client.fetch_by_uids(_config(), ["99"])
+        assert results == []
+
+    def test_multiple_uids_ordered(self, monkeypatch):
+        def make_raw(sender: str) -> bytes:
+            return f"From: {sender}\r\nSubject: s\r\n\r\nbody".encode()
+
+        prefix = b'1 (INTERNALDATE "01-Jan-2026 00:00:00 +0000" RFC822 {N}'
+        self._patch(
+            monkeypatch,
+            {
+                b"10": ("OK", [(prefix, make_raw("a@x"))]),
+                b"20": ("OK", [(prefix, make_raw("b@x"))]),
+            },
+        )
+        results = client.fetch_by_uids(_config(), ["10", "20"])
+        assert [r["uid"] for r in results] == ["10", "20"]
+        assert results[0]["from"] == "a@x"
+        assert results[1]["from"] == "b@x"
 
 
 def _msg_with_date(date_header: str) -> bytes:

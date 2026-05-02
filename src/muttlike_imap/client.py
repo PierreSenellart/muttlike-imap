@@ -34,7 +34,7 @@ def decode_header(value: str) -> str:
     return "".join(out)
 
 
-def get_preview(msg: email.message.Message, max_chars: int = 300) -> str:
+def get_preview(msg: email.message.Message, max_chars: int | None = 300) -> str:
     if msg.is_multipart():
         for part in msg.walk():
             disp = str(part.get("Content-Disposition", ""))
@@ -103,8 +103,10 @@ def _parse_internaldate(blob: bytes) -> datetime | None:
         return None
 
 
-def _record_for(uid: bytes, msg: email.message.Message) -> dict[str, str]:
-    return {
+def _record_for(
+    uid: bytes, msg: email.message.Message, include_body: bool = False
+) -> dict[str, str]:
+    record: dict[str, str] = {
         "uid": uid.decode(),
         "from": decode_header(msg.get("From", "")),
         "to": decode_header(msg.get("To", "")),
@@ -113,6 +115,35 @@ def _record_for(uid: bytes, msg: email.message.Message) -> dict[str, str]:
         "date": msg.get("Date", ""),
         "preview": get_preview(msg),
     }
+    if include_body:
+        record["body"] = get_preview(msg, max_chars=None)
+    return record
+
+
+def fetch_by_uids(
+    config: dict[str, str],
+    uids: list[str],
+    mailbox: str = "INBOX",
+    include_body: bool = False,
+    timeout: int = DEFAULT_TIMEOUT,
+) -> list[dict[str, str]]:
+    imap = imap_connect(config, timeout)
+    mb_name = mailbox if mailbox.isascii() else imap_utf7_encode(mailbox)
+    typ, _ = imap.select(mb_name, readonly=True)
+    if typ != "OK":
+        imap.logout()
+        raise RuntimeError(f"cannot select mailbox {mailbox!r}")
+    results: list[dict[str, str]] = []
+    for uid_str in uids:
+        uid = uid_str.encode()
+        typ, msg_data = imap.fetch(uid, "(INTERNALDATE RFC822)")
+        if typ != "OK" or not msg_data or not msg_data[0]:
+            continue
+        _prefix, body = msg_data[0]
+        msg = email.message_from_bytes(body)
+        results.append(_record_for(uid, msg, include_body=include_body))
+    imap.logout()
+    return results
 
 
 def search(
@@ -122,6 +153,7 @@ def search(
     mailbox: str,
     me: str | None = None,
     timeout: int = DEFAULT_TIMEOUT,
+    include_body: bool = False,
 ) -> list[dict[str, str]]:
     if me is None:
         me = config.get("USER", "")
@@ -160,7 +192,7 @@ def search(
             internaldate = _parse_internaldate(prefix) or datetime.now(timezone.utc)
             msg = email.message_from_bytes(body)
             if all(p(msg, internaldate) for p in compiled.predicates):
-                results.append(_record_for(uid, msg))
+                results.append(_record_for(uid, msg, include_body=include_body))
                 if len(results) >= limit:
                     break
         imap.logout()
@@ -174,7 +206,7 @@ def search(
         if typ != "OK":
             continue
         msg = email.message_from_bytes(msg_data[0][1])
-        results.append(_record_for(uid, msg))
+        results.append(_record_for(uid, msg, include_body=include_body))
 
     imap.logout()
     return results

@@ -16,9 +16,13 @@ def format_summary(results: Iterable[dict[str, str]]) -> str:
             f"UID:{e.get('uid', '?')} | From:{e.get('from', '?')} | Date:{e.get('date', '?')}"
         )
         out.append(f"Subject:{e.get('subject', '?')}")
-        preview = (e.get("preview") or "").strip()[:300]
-        if preview:
-            out.append(f"Preview:{preview}")
+        body = (e.get("body") or "").strip()
+        if body:
+            out.append(f"Body:{body}")
+        else:
+            preview = (e.get("preview") or "").strip()[:300]
+            if preview:
+                out.append(f"Preview:{preview}")
         out.append("")
     return "\n".join(out).rstrip("\n")
 

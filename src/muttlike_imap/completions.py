@@ -24,6 +24,8 @@ _muttlike-imap() {
         '--limit[Maximum number of results (default 10)]:limit:' \
         '--mailbox[IMAP folder to search (default INBOX)]:mailbox:_muttlike-imap-mailboxes' \
         '--summary[Human-readable output instead of JSON]' \
+        '--body[Include full body text in output]' \
+        '*--uid[Fetch specific messages by UID instead of searching]:uid:' \
         '--list-mailboxes[List available IMAP folders and exit]' \
         '--me[Email address used by ~p / ~P]:email:' \
         '--imap-host[IMAP server host]:host:_hosts' \
@@ -60,7 +62,7 @@ _muttlike_imap() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    opts="--limit --mailbox --summary --list-mailboxes --me \
+    opts="--limit --mailbox --summary --body --uid --list-mailboxes --me \
           --imap-host --imap-port --imap-user --imap-password-env \
           --imap-password-cmd --imap-tls --config --timeout \
           --completion --version --help"
@@ -99,6 +101,8 @@ FISH = r"""# Fish completion for muttlike-imap.
 complete -c muttlike-imap -l limit -x -d 'Maximum number of results (default 10)'
 complete -c muttlike-imap -l mailbox -x -d 'IMAP folder to search (default INBOX)'
 complete -c muttlike-imap -l summary -d 'Human-readable output instead of JSON'
+complete -c muttlike-imap -l body -d 'Include full body text in output'
+complete -c muttlike-imap -l uid -x -d 'Fetch specific messages by UID instead of searching'
 complete -c muttlike-imap -l list-mailboxes -d 'List available IMAP folders and exit'
 complete -c muttlike-imap -l me -x -d 'Email address used by ~p / ~P'
 complete -c muttlike-imap -l imap-host -x -d 'IMAP server host'
