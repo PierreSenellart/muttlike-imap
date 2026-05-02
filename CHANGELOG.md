@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.0]
+
 ### Added
 - `--body` flag: include full plain-text body in output (JSON `body` key;
   shown in place of `Preview:` in `--summary` output).
@@ -69,7 +71,8 @@ First public release.
   variable.
 - Library API: `parse_pattern`, `search`, `list_mailboxes`, `load_config`.
 
-[Unreleased]: https://github.com/PierreSenellart/muttlike-imap/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/PierreSenellart/muttlike-imap/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.1.0
 [1.0.2]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.0.2
 [1.0.1]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.0.1
 [1.0.0]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.0.0
