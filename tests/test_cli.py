@@ -144,6 +144,7 @@ class TestMain:
         rc = cli.main(["~U", "--body"])
         assert rc == 0
         import json
+
         results = json.loads(capsys.readouterr().out)
         assert len(results) == 1
         assert "body" in results[0]
@@ -152,6 +153,7 @@ class TestMain:
         rc = cli.main(["--uid", "42", "--body"])
         assert rc == 0
         import json
+
         results = json.loads(capsys.readouterr().out)
         assert len(results) == 1
         assert results[0]["uid"] == "42"
@@ -161,5 +163,6 @@ class TestMain:
         rc = cli.main(["--uid", "1", "2"])
         assert rc == 0
         import json
+
         results = json.loads(capsys.readouterr().out)
         assert len(results) == 2
