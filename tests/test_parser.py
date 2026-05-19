@@ -135,7 +135,7 @@ class TestText:
         # The opening quote chooses the terminator; the other style is
         # literal content inside.
         assert parse_pattern("~s 'has \"double\" inside'") == 'SUBJECT "has \\"double\\" inside"'
-        assert parse_pattern('~s "has \'single\' inside"') == "SUBJECT \"has 'single' inside\""
+        assert parse_pattern("~s \"has 'single' inside\"") == "SUBJECT \"has 'single' inside\""
 
     def test_backslash_escapes_same_quote_inside(self):
         # `\'` inside `'…'` yields a literal apostrophe — needed for values
