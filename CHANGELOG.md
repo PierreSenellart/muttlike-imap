@@ -6,6 +6,19 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.1]
+
+### Added
+- Single-quoted modifier values: `~f 'Jane Doe'` now parses the
+  same as `~f "Jane Doe"`. Mutt itself only accepts double quotes,
+  but single quotes are common in shell contexts and LLM-generated
+  patterns. The opening quote chooses the terminator, so a mid-bareword
+  quote stays literal (`~f O'Brien` still works).
+- Backslash-escapes for the active quote and for the backslash itself
+  inside quoted values: `~s 'outils d\'IA'` and `~s "say \"hi\""` now
+  parse as expected. Other backslash sequences (`\n`, `\bar`, etc.) are
+  left untouched so existing literal-backslash patterns are unaffected.
+
 ## [1.1.0]
 
 ### Added
@@ -71,7 +84,8 @@ First public release.
   variable.
 - Library API: `parse_pattern`, `search`, `list_mailboxes`, `load_config`.
 
-[Unreleased]: https://github.com/PierreSenellart/muttlike-imap/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/PierreSenellart/muttlike-imap/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.1.1
 [1.1.0]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.1.0
 [1.0.2]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.0.2
 [1.0.1]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.0.1

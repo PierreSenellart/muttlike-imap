@@ -257,17 +257,41 @@ class Parser:
         return _inner()
 
     def consume_token(self) -> str:
-        """Consume a whitespace/paren-delimited or quoted token."""
+        """Consume a whitespace/paren-delimited or quoted token.
+
+        Both ``"…"`` and ``'…'`` act as quoting (single quotes are a
+        muttlike-imap extension over mutt, which only recognises double
+        quotes). Quoting only triggers when the quote is the first
+        character of the token; mid-bareword quotes are taken literally
+        so values like ``~f O'Brien`` still work.
+
+        Inside a quoted value, ``\\<quote>`` produces a literal quote
+        character and ``\\\\`` produces a literal backslash. Other
+        backslash sequences are left untouched so existing patterns
+        like ``~f foo\\bar`` (literal substring ``foo\\bar``) are
+        unaffected.
+        """
         self.skip_ws()
-        if self.peek() == '"':
+        ch = self.peek()
+        if ch == '"' or ch == "'":
+            quote_ch = ch
             self.i += 1
-            start = self.i
-            while self.i < len(self.s) and self.s[self.i] != '"':
-                self.i += 1
-            v = self.s[start : self.i]
+            chars: list[str] = []
+            while self.i < len(self.s) and self.s[self.i] != quote_ch:
+                c = self.s[self.i]
+                if (
+                    c == "\\"
+                    and self.i + 1 < len(self.s)
+                    and self.s[self.i + 1] in (quote_ch, "\\")
+                ):
+                    chars.append(self.s[self.i + 1])
+                    self.i += 2
+                else:
+                    chars.append(c)
+                    self.i += 1
             if self.i < len(self.s):
                 self.i += 1
-            return v
+            return "".join(chars)
         start = self.i
         while self.i < len(self.s) and self.s[self.i] not in " \t()|":
             self.i += 1

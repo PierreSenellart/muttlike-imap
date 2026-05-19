@@ -118,6 +118,40 @@ class TestText:
     def test_quoted_value_with_spaces(self):
         assert parse_pattern('~s "hello world"') == 'SUBJECT "hello world"'
 
+    def test_single_quoted_value_with_spaces(self):
+        # Single quotes are a muttlike-imap extension over mutt; LLMs and
+        # shell-trained users reach for them, so accept them as a synonym
+        # for double quotes.
+        assert parse_pattern("~s 'hello world'") == 'SUBJECT "hello world"'
+        assert parse_pattern("~f 'Pratik Karmakar'") == 'FROM "Pratik Karmakar"'
+
+    def test_quote_chars_only_quote_when_leading(self):
+        # A quote mid-bareword is a literal character (so ``O'Brien`` and
+        # ``5"`` both survive). Each example produces a single FROM term.
+        assert parse_pattern("~f O'Brien") == 'FROM "O\'Brien"'
+        assert parse_pattern('~s 5"display') == 'SUBJECT "5\\"display"'
+
+    def test_mixed_quote_styles(self):
+        # The opening quote chooses the terminator; the other style is
+        # literal content inside.
+        assert parse_pattern("~s 'has \"double\" inside'") == 'SUBJECT "has \\"double\\" inside"'
+        assert parse_pattern('~s "has \'single\' inside"') == "SUBJECT \"has 'single' inside\""
+
+    def test_backslash_escapes_same_quote_inside(self):
+        # `\'` inside `'…'` yields a literal apostrophe — needed for values
+        # like French elisions ("outils d'IA"). Same for `\"` inside `"…"`.
+        assert parse_pattern(r"~s 'outils d\'IA'") == 'SUBJECT "outils d\'IA"'
+        assert parse_pattern(r'~s "say \"hi\""') == 'SUBJECT "say \\"hi\\""'
+
+    def test_backslash_escapes_backslash(self):
+        # `\\` inside quotes yields a single literal backslash.
+        assert parse_pattern(r"~s 'a\\b'") == 'SUBJECT "a\\\\b"'
+
+    def test_backslash_only_escapes_quote_and_backslash(self):
+        # Other backslash sequences are preserved literally so existing
+        # patterns aren't reinterpreted.
+        assert parse_pattern(r"~s 'a\nb'") == 'SUBJECT "a\\\\nb"'
+
     def test_C_match(self):
         assert parse_pattern("~C alice") == 'OR (OR TO "alice" CC "alice") BCC "alice"'
 

@@ -20,10 +20,20 @@ IMAP `SEARCH` criteria. This document is the full reference.
 A modifier value may be:
 
 - A bareword: `~f alice` (terminated by whitespace, `(`, `)`, or `\|`).
-- A quoted string: `~s "hello world"`.
+- A quoted string: `~s "hello world"` or `~s 'hello world'`.
 
-Backslash-escapes inside quotes are not supported; use a different quoting
-mechanism in your shell if you need a literal `"` inside the value.
+Either quote style works. (Mutt itself only accepts double quotes;
+`muttlike-imap` accepts single quotes too because they're common in shell
+contexts and LLM-generated patterns.) A quote character only opens a
+quoted token when it's the first character of the token, so mid-bareword
+quotes are taken literally — `~f O'Brien` works as written.
+
+Inside a quoted value, `\<quote>` produces a literal quote and `\\` produces
+a literal backslash. Other backslash sequences are left as-is, so existing
+patterns like `~f foo\bar` (literal substring `foo\bar`) keep working.
+The cleanest way to handle a value containing the same quote that opens it
+is to switch to the other style — `~s "say 'hi'"` or `~s 'she said "yes"'`
+— but `~s 'outils d\'IA'` and `~s "say \"hi\""` are also accepted.
 
 ## Headers and addresses
 
