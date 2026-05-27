@@ -251,6 +251,28 @@ class TestSearch:
         results = client.search(_config(), "~U", limit=10, mailbox="INBOX")
         assert results[0]["message_id"] == ""
 
+    def test_references_and_in_reply_to_captured(self, monkeypatch):
+        # References folds across lines; whitespace must be collapsed to a
+        # single space-separated list of message-ids.
+        msg = (
+            b"From: alice@example.com\r\n"
+            b"Subject: Re: hi\r\n"
+            b"In-Reply-To: <b@example.com>\r\n"
+            b"References: <a@example.com>\r\n <b@example.com>\r\n"
+            b"\r\nbody"
+        )
+        self._patch_with_search_results(monkeypatch, [("OK", [b"1"])], fetch_message=msg)
+        results = client.search(_config(), "~U", limit=10, mailbox="INBOX")
+        assert results[0]["in_reply_to"] == "<b@example.com>"
+        assert results[0]["references"] == "<a@example.com> <b@example.com>"
+
+    def test_references_absent_are_empty(self, monkeypatch):
+        msg = b"From: alice@example.com\r\nSubject: hi\r\n\r\nbody"
+        self._patch_with_search_results(monkeypatch, [("OK", [b"1"])], fetch_message=msg)
+        results = client.search(_config(), "~U", limit=10, mailbox="INBOX")
+        assert results[0]["references"] == ""
+        assert results[0]["in_reply_to"] == ""
+
     def test_unicode_mailbox_encoded_to_utf7(self, monkeypatch):
         self._patch_with_search_results(monkeypatch, [("OK", [b""])])
         client.search(_config(), "~U", limit=10, mailbox="Éléments envoyés")

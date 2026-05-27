@@ -114,6 +114,8 @@ def _record_for(
         "subject": decode_header(msg.get("Subject", "")),
         "date": msg.get("Date", ""),
         "message_id": (msg.get("Message-ID", "") or "").strip(),
+        "in_reply_to": " ".join((msg.get("In-Reply-To", "") or "").split()),
+        "references": " ".join((msg.get("References", "") or "").split()),
         "preview": get_preview(msg),
     }
     if include_body:
