@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.2]
+
+### Added
+- `message_id` field in each record: the message's `Message-ID`
+  header (stripped of surrounding whitespace), giving a stable locator
+  for threading or jumping to a specific message. Empty string when the
+  header is absent.
+
 ## [1.1.1]
 
 ### Added
@@ -84,7 +92,8 @@ First public release.
   variable.
 - Library API: `parse_pattern`, `search`, `list_mailboxes`, `load_config`.
 
-[Unreleased]: https://github.com/PierreSenellart/muttlike-imap/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/PierreSenellart/muttlike-imap/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.1.2
 [1.1.1]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.1.1
 [1.1.0]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.1.0
 [1.0.2]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.0.2
