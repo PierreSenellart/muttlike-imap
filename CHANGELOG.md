@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.3]
+
+### Added
+- `in_reply_to` and `references` fields in each record: the message's
+  `In-Reply-To` and `References` headers, whitespace-collapsed (folded
+  lines joined, runs of whitespace reduced to single spaces). Together
+  with `message_id` these enable accurate thread reconstruction by
+  downstream tools. Empty string when the header is absent.
+
 ## [1.1.2]
 
 ### Added
@@ -92,7 +101,8 @@ First public release.
   variable.
 - Library API: `parse_pattern`, `search`, `list_mailboxes`, `load_config`.
 
-[Unreleased]: https://github.com/PierreSenellart/muttlike-imap/compare/v1.1.2...HEAD
+[Unreleased]: https://github.com/PierreSenellart/muttlike-imap/compare/v1.1.3...HEAD
+[1.1.3]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.1.3
 [1.1.2]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.1.2
 [1.1.1]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.1.1
 [1.1.0]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.1.0
