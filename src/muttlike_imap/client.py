@@ -113,6 +113,7 @@ def _record_for(
         "cc": decode_header(msg.get("CC", "")),
         "subject": decode_header(msg.get("Subject", "")),
         "date": msg.get("Date", ""),
+        "message_id": (msg.get("Message-ID", "") or "").strip(),
         "preview": get_preview(msg),
     }
     if include_body:

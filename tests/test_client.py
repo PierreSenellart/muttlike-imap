@@ -234,6 +234,23 @@ class TestSearch:
         assert results[0]["body"] == "x" * 1000
         assert len(results[0]["preview"]) == 300
 
+    def test_message_id_captured(self, monkeypatch):
+        msg = (
+            b"From: alice@example.com\r\n"
+            b"Subject: hi\r\n"
+            b"Message-ID:  <abc123@example.com>\r\n"
+            b"\r\nbody"
+        )
+        self._patch_with_search_results(monkeypatch, [("OK", [b"1"])], fetch_message=msg)
+        results = client.search(_config(), "~U", limit=10, mailbox="INBOX")
+        assert results[0]["message_id"] == "<abc123@example.com>"
+
+    def test_message_id_absent_is_empty(self, monkeypatch):
+        msg = b"From: alice@example.com\r\nSubject: hi\r\n\r\nbody"
+        self._patch_with_search_results(monkeypatch, [("OK", [b"1"])], fetch_message=msg)
+        results = client.search(_config(), "~U", limit=10, mailbox="INBOX")
+        assert results[0]["message_id"] == ""
+
     def test_unicode_mailbox_encoded_to_utf7(self, monkeypatch):
         self._patch_with_search_results(monkeypatch, [("OK", [b""])])
         client.search(_config(), "~U", limit=10, mailbox="Éléments envoyés")
