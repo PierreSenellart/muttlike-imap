@@ -1,0 +1,2 @@
+# tests/ is the test suite, not library code.
+tests/** linguist-vendored
