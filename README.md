@@ -220,6 +220,14 @@ parse_pattern("(~f a | ~f b) ~U")
 # → 'OR (FROM "a") (FROM "b") UNSEEN'
 ```
 
+## Authorship
+
+`muttlike-imap` was written by Pierre Senellart with the assistance of
+generative models from Anthropic (*Claude*). The pattern language, the
+command-line interface, and the behavior of the tool were specified and reviewed
+by the author, who is responsible for the whole. The test suite runs in
+continuous integration.
+
 ## License
 
 MIT: see [LICENSE](LICENSE).
