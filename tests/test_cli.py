@@ -28,12 +28,16 @@ def fake_imap_class(monkeypatch):
             state["selected"] = mailbox
             return ("OK", [b"1"])
 
-        def search(self, charset, criteria):
-            state["criteria"] = criteria
-            return state["search_response"]
+        def response(self, code):
+            return (code, [b"1700000000"])
 
-        def fetch(self, uid, what):
-            return ("OK", [(b"x", b"From: a@x\r\nSubject: s\r\n\r\nbody")])
+        def uid(self, command, *args):
+            if command == "SEARCH":
+                state["criteria"] = args[2]
+                return state["search_response"]
+            if command == "FETCH":
+                return ("OK", [(b"x", b"From: a@x\r\nSubject: s\r\n\r\nbody"), b")"])
+            raise AssertionError(f"unexpected UID command {command!r}")
 
         def list(self, directory='""', pattern="*"):
             return state["list_response"]

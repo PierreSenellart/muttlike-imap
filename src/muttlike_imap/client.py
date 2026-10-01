@@ -92,6 +92,35 @@ def list_mailboxes(config: dict[str, str], timeout: int = DEFAULT_TIMEOUT) -> li
     return parse_list_response(data)
 
 
+def _select(imap: imaplib.IMAP4, mailbox: str, readonly: bool = True) -> str:
+    """SELECT ``mailbox`` and return its UIDVALIDITY ("" if not reported).
+
+    UIDs are only meaningful together with the UIDVALIDITY under which they
+    were read: if it changes, the server has renumbered the folder.
+    """
+    mb_name = mailbox if mailbox.isascii() else imap_utf7_encode(mailbox)
+    typ, _ = imap.select(mb_name, readonly=readonly)
+    if typ != "OK":
+        imap.logout()
+        raise RuntimeError(f"cannot select mailbox {mailbox!r}")
+    _typ, data = imap.response("UIDVALIDITY")
+    if data and data[0]:
+        value = data[0]
+        return value.decode() if isinstance(value, bytes) else str(value)
+    return ""
+
+
+def _uid_fetch(imap: imaplib.IMAP4, uid: bytes, what: str) -> tuple[bytes, bytes] | None:
+    """``UID FETCH`` one message; return ``(prefix, literal)`` or None."""
+    typ, msg_data = imap.uid("FETCH", uid, what)
+    if typ != "OK" or not msg_data:
+        return None
+    for item in msg_data:
+        if isinstance(item, tuple) and len(item) == 2:
+            return item
+    return None
+
+
 def _parse_internaldate(blob: bytes) -> datetime | None:
     """Extract INTERNALDATE from the FETCH response prefix, if present."""
     m = _INTERNALDATE_RE.search(blob)
@@ -104,10 +133,14 @@ def _parse_internaldate(blob: bytes) -> datetime | None:
 
 
 def _record_for(
-    uid: bytes, msg: email.message.Message, include_body: bool = False
+    uid: bytes,
+    msg: email.message.Message,
+    include_body: bool = False,
+    uidvalidity: str = "",
 ) -> dict[str, str]:
     record: dict[str, str] = {
         "uid": uid.decode(),
+        "uidvalidity": uidvalidity,
         "from": decode_header(msg.get("From", "")),
         "to": decode_header(msg.get("To", "")),
         "cc": decode_header(msg.get("CC", "")),
@@ -131,20 +164,16 @@ def fetch_by_uids(
     timeout: int = DEFAULT_TIMEOUT,
 ) -> list[dict[str, str]]:
     imap = imap_connect(config, timeout)
-    mb_name = mailbox if mailbox.isascii() else imap_utf7_encode(mailbox)
-    typ, _ = imap.select(mb_name, readonly=True)
-    if typ != "OK":
-        imap.logout()
-        raise RuntimeError(f"cannot select mailbox {mailbox!r}")
+    uidvalidity = _select(imap, mailbox)
     results: list[dict[str, str]] = []
     for uid_str in uids:
         uid = uid_str.encode()
-        typ, msg_data = imap.fetch(uid, "(INTERNALDATE RFC822)")
-        if typ != "OK" or not msg_data or not msg_data[0]:
+        item = _uid_fetch(imap, uid, "(INTERNALDATE RFC822)")
+        if item is None:
             continue
-        _prefix, body = msg_data[0]
+        _prefix, body = item
         msg = email.message_from_bytes(body)
-        results.append(_record_for(uid, msg, include_body=include_body))
+        results.append(_record_for(uid, msg, include_body=include_body, uidvalidity=uidvalidity))
     imap.logout()
     return results
 
@@ -161,20 +190,16 @@ def search(
     if me is None:
         me = config.get("USER", "")
     imap = imap_connect(config, timeout)
-    mb_name = mailbox if mailbox.isascii() else imap_utf7_encode(mailbox)
-    typ, _ = imap.select(mb_name, readonly=True)
-    if typ != "OK":
-        imap.logout()
-        raise RuntimeError(f"cannot select mailbox {mailbox!r}")
+    uidvalidity = _select(imap, mailbox)
 
     compiled = compile_pattern(pattern, fold_only=False, me=me)
     try:
-        typ, data = imap.search("UTF-8", compiled.criteria.encode("utf-8"))
+        typ, data = imap.uid("SEARCH", "CHARSET", "UTF-8", compiled.criteria.encode("utf-8"))
     except imaplib.IMAP4.error:
         # Server rejected 8-bit literals in quoted strings; retry with
         # diacritics stripped from every search value.
         compiled = compile_pattern(pattern, fold_only=True, me=me)
-        typ, data = imap.search("UTF-8", compiled.criteria.encode("ascii"))
+        typ, data = imap.uid("SEARCH", "CHARSET", "UTF-8", compiled.criteria.encode("ascii"))
 
     if typ != "OK" or not data[0]:
         imap.logout()
@@ -188,14 +213,16 @@ def search(
         # post-filter predicates. Stop once we've collected ``limit`` matches.
         results: list[dict[str, str]] = []
         for uid in reversed(all_uids):
-            typ, msg_data = imap.fetch(uid, fetch_atom)
-            if typ != "OK" or not msg_data or not msg_data[0]:
+            item = _uid_fetch(imap, uid, fetch_atom)
+            if item is None:
                 continue
-            prefix, body = msg_data[0]
+            prefix, body = item
             internaldate = _parse_internaldate(prefix) or datetime.now(timezone.utc)
             msg = email.message_from_bytes(body)
             if all(p(msg, internaldate) for p in compiled.predicates):
-                results.append(_record_for(uid, msg, include_body=include_body))
+                results.append(
+                    _record_for(uid, msg, include_body=include_body, uidvalidity=uidvalidity)
+                )
                 if len(results) >= limit:
                     break
         imap.logout()
@@ -205,11 +232,11 @@ def search(
     uids.reverse()
     results = []
     for uid in uids:
-        typ, msg_data = imap.fetch(uid, fetch_atom)
-        if typ != "OK":
+        item = _uid_fetch(imap, uid, fetch_atom)
+        if item is None:
             continue
-        msg = email.message_from_bytes(msg_data[0][1])
-        results.append(_record_for(uid, msg, include_body=include_body))
+        msg = email.message_from_bytes(item[1])
+        results.append(_record_for(uid, msg, include_body=include_body, uidvalidity=uidvalidity))
 
     imap.logout()
     return results

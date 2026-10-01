@@ -6,6 +6,20 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- The `uid` field and `--uid` now really are IMAP UIDs. Earlier
+  versions used plain `SEARCH`/`FETCH`, which work on message sequence
+  numbers: these shift whenever a message above them leaves the folder,
+  so a number read from one search could designate a different message
+  a few minutes later. Searches and fetches now use `UID SEARCH` and
+  `UID FETCH`. The numbers printed will differ from those of earlier
+  versions.
+
+### Added
+- `uidvalidity` field in each record: the folder's `UIDVALIDITY`, which
+  qualifies the UID (if it changes, the server has renumbered the
+  folder). Empty string when the server does not report it.
+
 ## [1.1.3]
 
 ### Added

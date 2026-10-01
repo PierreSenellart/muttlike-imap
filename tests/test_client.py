@@ -88,6 +88,7 @@ class FakeIMAP:
         self.fetch_responses: dict = {}
         self.list_response = ("OK", [])
         self.select_responses: dict = {}
+        self.uidvalidity = b"1700000000"
 
     def login(self, user, password):
         self.logged_in = True
@@ -102,7 +103,28 @@ class FakeIMAP:
             return self.select_responses[mailbox]
         return ("OK", [b"1"])
 
-    def search(self, charset, criteria):
+    def response(self, code):
+        if code == "UIDVALIDITY" and self.uidvalidity is not None:
+            return (code, [self.uidvalidity])
+        return (code, [None])
+
+    def uid(self, command, *args):
+        if command == "SEARCH":
+            assert args[0] == "CHARSET"
+            return self._uid_search(args[1], args[2])
+        if command == "FETCH":
+            return self._uid_fetch(args[0], args[1])
+        raise AssertionError(f"unexpected UID command {command!r}")
+
+    # Sequence-number commands must never be used: message sequence numbers
+    # shift whenever another message leaves the folder.
+    def search(self, *args):
+        raise AssertionError("sequence-number SEARCH used; use UID SEARCH")
+
+    def fetch(self, *args):
+        raise AssertionError("sequence-number FETCH used; use UID FETCH")
+
+    def _uid_search(self, charset, criteria):
         self.search_calls.append((charset, criteria))
         if not self.search_responses:
             return ("OK", [b""])
@@ -111,7 +133,7 @@ class FakeIMAP:
             raise resp
         return resp
 
-    def fetch(self, uid, what):
+    def _uid_fetch(self, uid, what):
         if uid in self.fetch_responses:
             return self.fetch_responses[uid]
         # Return a minimal RFC822 message with a default INTERNALDATE.
@@ -322,6 +344,59 @@ class TestSearch:
         results = client.search(_config(), "~U", limit=3, mailbox="INBOX")
         # The script keeps the LAST `limit` UIDs, then reverses (most-recent first)
         assert [r["uid"] for r in results] == ["5", "4", "3"]
+
+
+class TestUids:
+    """Records carry real IMAP UIDs (stable across expunges) plus the
+    folder's UIDVALIDITY, never message sequence numbers."""
+
+    def test_uidvalidity_in_records(self, monkeypatch):
+        def factory(host, port=993):
+            inst = FakeIMAP(host, port)
+            inst.search_responses = [("OK", [b"4520"])]
+            inst.uidvalidity = b"1234567890"
+            return inst
+
+        monkeypatch.setattr(imaplib, "IMAP4_SSL", factory)
+        results = client.search(_config(), "~U", limit=10, mailbox="INBOX")
+        assert results[0]["uid"] == "4520"
+        assert results[0]["uidvalidity"] == "1234567890"
+
+    def test_uidvalidity_missing_is_empty(self, monkeypatch):
+        def factory(host, port=993):
+            inst = FakeIMAP(host, port)
+            inst.uidvalidity = None
+            return inst
+
+        monkeypatch.setattr(imaplib, "IMAP4_SSL", factory)
+        results = client.fetch_by_uids(_config(), ["7"])
+        assert results[0]["uidvalidity"] == ""
+
+    def test_uid_fetch_response_with_trailing_paren(self, monkeypatch):
+        # Real servers answer UID FETCH with the literal tuple followed by a
+        # closing b")" element, and put UID inside the prefix.
+        raw = b"From: bob@example.com\r\nSubject: hi\r\n\r\nhello"
+        prefix = b'12 (UID 4520 INTERNALDATE "01-Jan-2026 00:00:00 +0000" RFC822 {N}'
+
+        def factory(host, port=993):
+            inst = FakeIMAP(host, port)
+            inst.fetch_responses = {b"4520": ("OK", [(prefix, raw), b")"])}
+            return inst
+
+        monkeypatch.setattr(imaplib, "IMAP4_SSL", factory)
+        results = client.fetch_by_uids(_config(), ["4520"])
+        assert results[0]["uid"] == "4520"
+        assert results[0]["from"] == "bob@example.com"
+
+    def test_uid_fetch_of_vanished_message_skipped(self, monkeypatch):
+        # UID FETCH of an expunged UID returns OK with no data.
+        def factory(host, port=993):
+            inst = FakeIMAP(host, port)
+            inst.fetch_responses = {b"4520": ("OK", [None])}
+            return inst
+
+        monkeypatch.setattr(imaplib, "IMAP4_SSL", factory)
+        assert client.fetch_by_uids(_config(), ["4520"]) == []
 
 
 class TestFetchByUids:
