@@ -26,6 +26,9 @@ _muttlike-imap() {
         '--summary[Human-readable output instead of JSON]' \
         '--body[Include full body text in output]' \
         '*--uid[Fetch specific messages by UID instead of searching]:uid:' \
+        '--move-to[Move the --uid messages to this folder]:folder:_muttlike-imap-mailboxes' \
+        '--uidvalidity[UIDVALIDITY the UIDs were read under]:uidvalidity:' \
+        '--dry-run[With --move-to, show what would move]' \
         '--list-mailboxes[List available IMAP folders and exit]' \
         '--me[Email address used by ~p / ~P]:email:' \
         '--imap-host[IMAP server host]:host:_hosts' \
@@ -62,7 +65,8 @@ _muttlike_imap() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    opts="--limit --mailbox --summary --body --uid --list-mailboxes --me \
+    opts="--limit --mailbox --summary --body --uid --move-to --uidvalidity \
+          --dry-run --list-mailboxes --me \
           --imap-host --imap-port --imap-user --imap-password-env \
           --imap-password-cmd --imap-tls --config --timeout \
           --completion --version --help"
@@ -103,6 +107,9 @@ complete -c muttlike-imap -l mailbox -x -d 'IMAP folder to search (default INBOX
 complete -c muttlike-imap -l summary -d 'Human-readable output instead of JSON'
 complete -c muttlike-imap -l body -d 'Include full body text in output'
 complete -c muttlike-imap -l uid -x -d 'Fetch specific messages by UID instead of searching'
+complete -c muttlike-imap -l move-to -x -d 'Move the --uid messages to this folder'
+complete -c muttlike-imap -l uidvalidity -x -d 'UIDVALIDITY the UIDs were read under'
+complete -c muttlike-imap -l dry-run -d 'With --move-to, show what would move'
 complete -c muttlike-imap -l list-mailboxes -d 'List available IMAP folders and exit'
 complete -c muttlike-imap -l me -x -d 'Email address used by ~p / ~P'
 complete -c muttlike-imap -l imap-host -x -d 'IMAP server host'

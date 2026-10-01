@@ -147,6 +147,38 @@ muttlike-imap "~U" | jq '.[] | {uid, subject, from}'
 muttlike-imap --list-mailboxes
 ```
 
+## Moving messages
+
+`--move-to FOLDER` moves the messages given by `--uid` out of `--mailbox`
+(default `INBOX`). Take the UIDs from a search, and pass the
+`uidvalidity` reported with them so that the move is refused if the
+server has renumbered the folder in the meantime:
+
+```sh
+muttlike-imap '~f alice ~s report' | jq '.[] | {uid, uidvalidity, subject}'
+muttlike-imap --uid 4520 --uidvalidity 1328350824 --move-to Archive --dry-run --summary
+muttlike-imap --uid 4520 --uidvalidity 1328350824 --move-to Archive --summary
+```
+
+A message is never deleted before its copy is known to exist:
+
+- The destination must already exist; it is never created.
+- If the server supports `MOVE` (RFC 6851), the move is a single atomic
+  command.
+- Otherwise the message is copied, the copy is located in the destination
+  (same Message-ID, same size), and only then is the original flagged
+  `\Deleted` and removed with `UID EXPUNGE` (RFC 4315), which expunges
+  that one UID: other messages already flagged `\Deleted` are left
+  alone. Without `UIDPLUS`, or if the copy cannot be confirmed, the
+  original stays where it was and the result says `copied` or
+  `skipped`.
+
+Each message gets a record with a `status` (`moved`, `would-move`,
+`copied` or `skipped`), the `method` used, the `new_uid` in the
+destination when known, and a `reason` when something was held back.
+The exit status is 0 when every message was moved, 2 when some were
+not, 1 on error.
+
 ## Pattern syntax
 
 `A B` is AND (juxtaposition), `A | B` is OR, `!A` is NOT, and `(...)` groups.

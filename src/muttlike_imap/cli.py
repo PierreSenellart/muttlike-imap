@@ -7,10 +7,10 @@ import socket
 import sys
 
 from . import __version__
-from .client import DEFAULT_TIMEOUT, fetch_by_uids, list_mailboxes, search
+from .client import DEFAULT_TIMEOUT, fetch_by_uids, list_mailboxes, move_messages, search
 from .completions import SCRIPTS, get_completion
 from .config import load_config, resolve_password
-from .output import format_json, format_summary
+from .output import format_json, format_moves, format_summary
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,6 +30,29 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="+",
         metavar="UID",
         help="Fetch specific messages by UID instead of searching.",
+    )
+    p.add_argument(
+        "--move-to",
+        metavar="FOLDER",
+        help=(
+            "Move the messages given by --uid from --mailbox to FOLDER (which must "
+            "exist). Uses IMAP MOVE when available, otherwise copy, verify, then "
+            "expunge that UID only; a message is never deleted before its copy is "
+            "confirmed."
+        ),
+    )
+    p.add_argument(
+        "--uidvalidity",
+        metavar="N",
+        help=(
+            "With --move-to: the UIDVALIDITY the UIDs were read under (the "
+            "'uidvalidity' field of search results); abort if the folder's differs."
+        ),
+    )
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="With --move-to: show what would be moved without changing anything.",
     )
     p.add_argument(
         "--list-mailboxes", action="store_true", help="List available IMAP folders and exit."
@@ -97,7 +120,12 @@ def _build_config(args: argparse.Namespace) -> dict[str, str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.move_to and not args.uid:
+        parser.error("--move-to requires --uid")
+    if (args.uidvalidity or args.dry_run) and not args.move_to:
+        parser.error("--uidvalidity and --dry-run only apply to --move-to")
     if args.completion:
         sys.stdout.write(get_completion(args.completion))
         return 0
@@ -108,6 +136,18 @@ def main(argv: list[str] | None = None) -> int:
                 print(name)
             return 0
         me = args.me or config.get("USER", "")
+        if args.move_to:
+            moved = move_messages(
+                config,
+                args.uid,
+                args.move_to,
+                mailbox=args.mailbox,
+                uidvalidity=args.uidvalidity or "",
+                dry_run=args.dry_run,
+                timeout=args.timeout,
+            )
+            print(format_moves(moved) if args.summary else format_json(moved))
+            return 0 if all(r["status"] in ("moved", "would-move") for r in moved) else 2
         if args.uid:
             results = fetch_by_uids(
                 config,

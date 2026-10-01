@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import email
 import email.header
 import imaplib
@@ -240,3 +241,185 @@ def search(
 
     imap.logout()
     return results
+
+
+# ---------- Moving messages ----------
+
+
+def _quote_mailbox(name: str) -> str:
+    """mUTF-7-encode (if needed) and quote a mailbox name for a command."""
+    encoded = name if name.isascii() else imap_utf7_encode(name)
+    return '"' + encoded.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _capabilities(imap: imaplib.IMAP4) -> set[str]:
+    """Post-login capabilities (they may differ from the pre-login ones)."""
+    typ, data = imap.capability()
+    if typ != "OK" or not data or not data[0]:
+        return {c.upper() for c in getattr(imap, "capabilities", ())}
+    raw = data[0].decode() if isinstance(data[0], bytes) else str(data[0])
+    return {c.upper() for c in raw.split()}
+
+
+def _copyuid(imap: imaplib.IMAP4, uid: str) -> str:
+    """New UID of ``uid`` from a ``[COPYUID v src dst]`` response code, if any."""
+    _typ, data = imap.response("COPYUID")
+    for item in data or []:
+        if not item:
+            continue
+        text = item.decode() if isinstance(item, bytes) else str(item)
+        parts = text.split()
+        if len(parts) == 3:
+            src, dst = parts[1].split(","), parts[2].split(",")
+            if len(src) == len(dst) and uid in src:
+                return dst[src.index(uid)]
+    return ""
+
+
+def _find_by_message_id(imap: imaplib.IMAP4, message_id: str, size: str) -> list[str]:
+    """UIDs in the selected folder with this Message-ID and RFC822 size."""
+    mid = message_id.replace("\\", "\\\\").replace('"', '\\"')
+    typ, data = imap.uid("SEARCH", "HEADER", "Message-ID", f'"{mid}"')
+    if typ != "OK" or not data or not data[0]:
+        return []
+    found = []
+    for uid in data[0].split():
+        typ, fdata = imap.uid("FETCH", uid, "(RFC822.SIZE)")
+        blob = b" ".join(x if isinstance(x, bytes) else x[0] for x in fdata or [] if x)
+        m = re.search(rb"RFC822\.SIZE (\d+)", blob)
+        if m and m.group(1).decode() == size:
+            found.append(uid.decode())
+    return found
+
+
+def _describe(imap: imaplib.IMAP4, uid: str) -> dict[str, str] | None:
+    """Headers and size of one message in the selected folder, or None."""
+    typ, data = imap.uid(
+        "FETCH",
+        uid,
+        "(RFC822.SIZE BODY.PEEK[HEADER.FIELDS (MESSAGE-ID FROM SUBJECT DATE)])",
+    )
+    if typ != "OK" or not data:
+        return None
+    for item in data:
+        if isinstance(item, tuple) and len(item) == 2:
+            m = re.search(rb"RFC822\.SIZE (\d+)", item[0])
+            hdr = email.message_from_bytes(item[1])
+            return {
+                "size": m.group(1).decode() if m else "",
+                "message_id": (hdr.get("Message-ID", "") or "").strip(),
+                "from": decode_header(hdr.get("From", "")),
+                "subject": decode_header(hdr.get("Subject", "")),
+                "date": hdr.get("Date", ""),
+            }
+    return None
+
+
+def move_messages(
+    config: dict[str, str],
+    uids: list[str],
+    destination: str,
+    mailbox: str = "INBOX",
+    uidvalidity: str = "",
+    dry_run: bool = False,
+    timeout: int = DEFAULT_TIMEOUT,
+) -> list[dict[str, str]]:
+    """Move messages, identified by UID, from ``mailbox`` to ``destination``.
+
+    Designed so that a message can never be lost:
+
+    * the destination must already exist; ``uidvalidity``, if given, must
+      match the source folder's, otherwise nothing is touched;
+    * with the ``MOVE`` extension (RFC 6851), the server moves atomically;
+    * otherwise the message is copied, the copy is located in the
+      destination (by Message-ID and size), and only then is the original
+      flagged ``\\Deleted`` and removed with ``UID EXPUNGE`` (UIDPLUS),
+      which expunges that UID alone. Without UIDPLUS, or when the copy
+      cannot be verified, the original is left untouched.
+
+    Returns one record per UID with a ``status`` of ``moved``,
+    ``would-move`` (dry run), ``copied`` (copy verified, original kept)
+    or ``skipped``, plus a ``reason`` when relevant.
+    """
+    if mailbox == destination:
+        raise RuntimeError("source and destination mailboxes are the same")
+    imap = imap_connect(config, timeout)
+    try:
+        caps = _capabilities(imap)
+        typ, _ = imap.status(_quote_mailbox(destination), "(UIDVALIDITY)")
+        if typ != "OK":
+            raise RuntimeError(f"destination mailbox {destination!r} does not exist")
+        current = _select(imap, mailbox, readonly=dry_run)
+        if uidvalidity and current and uidvalidity != current:
+            raise RuntimeError(
+                f"UIDVALIDITY of {mailbox!r} is {current}, not {uidvalidity}: "
+                "the folder was renumbered, re-read the UIDs"
+            )
+        if not uidvalidity:
+            uidvalidity = current
+        method = "MOVE" if "MOVE" in caps else ("COPY+UIDPLUS" if "UIDPLUS" in caps else "COPY")
+
+        results: list[dict[str, str]] = []
+        for uid in uids:
+            info = _describe(imap, uid)
+            rec = {"uid": uid, "uidvalidity": uidvalidity, "mailbox": mailbox}
+            rec["destination"] = destination
+            if info is None:
+                rec.update(status="skipped", reason="no message with this UID")
+                results.append(rec)
+                continue
+            rec.update({k: info[k] for k in ("message_id", "from", "subject", "date")})
+            rec["method"] = method
+            if dry_run:
+                rec["status"] = "would-move"
+                results.append(rec)
+                continue
+            results.append(rec)
+            if method == "MOVE":
+                typ, _ = imap.uid("MOVE", uid, _quote_mailbox(destination))
+                if typ != "OK":
+                    rec.update(status="skipped", reason="server refused MOVE")
+                    continue
+                rec.update(status="moved", new_uid=_copyuid(imap, uid))
+                continue
+            # COPY, then verify before touching the original.
+            typ, _ = imap.uid("COPY", uid, _quote_mailbox(destination))
+            if typ != "OK":
+                rec.update(status="skipped", reason="server refused COPY")
+                continue
+            new_uid = _copyuid(imap, uid)
+            if not info["message_id"]:
+                rec.update(
+                    status="copied",
+                    new_uid=new_uid,
+                    reason="no Message-ID to verify the copy; original kept",
+                )
+                continue
+            _select(imap, destination, readonly=True)
+            found = _find_by_message_id(imap, info["message_id"], info["size"])
+            if _select(imap, mailbox, readonly=False) != uidvalidity:
+                raise RuntimeError(f"UIDVALIDITY of {mailbox!r} changed during the move")
+            if not found or (new_uid and new_uid not in found):
+                rec.update(status="skipped", reason="copy not found in destination")
+                continue
+            new_uid = new_uid or found[-1]
+            if method != "COPY+UIDPLUS":
+                rec.update(status="copied", new_uid=new_uid, reason="no UIDPLUS; original kept")
+                continue
+            typ, _ = imap.uid("STORE", uid, "+FLAGS.SILENT", "(\\Deleted)")
+            if typ != "OK":
+                rec.update(status="copied", new_uid=new_uid, reason="could not flag original")
+                continue
+            typ, _ = imap.uid("EXPUNGE", uid)
+            if typ != "OK":
+                rec.update(
+                    status="copied",
+                    new_uid=new_uid,
+                    reason="UID EXPUNGE failed; original flagged \\Deleted",
+                )
+                continue
+            rec.update(status="moved", new_uid=new_uid)
+        return results
+    finally:
+        with contextlib.suppress(Exception):
+            imap.logout()

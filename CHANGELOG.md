@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `--move-to FOLDER` (with `--uid`, optionally `--uidvalidity` and
+  `--dry-run`) moves messages to another folder without any risk of
+  losing them: atomic `UID MOVE` when the server supports it, otherwise
+  copy, verify the copy, then `UID EXPUNGE` of that UID only; the
+  original is kept whenever the copy cannot be confirmed.
+- `uidvalidity` field in each record: the folder's `UIDVALIDITY`, which
+  qualifies the UID (if it changes, the server has renumbered the
+  folder). Empty string when the server does not report it.
+
 ### Fixed
 - The `uid` field and `--uid` now really are IMAP UIDs. Earlier
   versions used plain `SEARCH`/`FETCH`, which work on message sequence
@@ -14,11 +24,6 @@ adheres to [Semantic Versioning](https://semver.org/).
   a few minutes later. Searches and fetches now use `UID SEARCH` and
   `UID FETCH`. The numbers printed will differ from those of earlier
   versions.
-
-### Added
-- `uidvalidity` field in each record: the folder's `UIDVALIDITY`, which
-  qualifies the UID (if it changes, the server has renumbered the
-  folder). Empty string when the server does not report it.
 
 ## [1.1.3]
 

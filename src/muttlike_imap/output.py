@@ -29,3 +29,24 @@ def format_summary(results: Iterable[dict[str, str]]) -> str:
 
 def format_json(results: Iterable[dict[str, str]]) -> str:
     return json.dumps(list(results), ensure_ascii=False, indent=2)
+
+
+def format_moves(results: Iterable[dict[str, str]]) -> str:
+    results = list(results)
+    if not results:
+        return "Nothing to move."
+    out: list[str] = []
+    for e in results:
+        line = f"{e.get('status', '?')}: UID {e.get('uid', '?')}"
+        if e.get("new_uid"):
+            line += f" -> {e.get('destination', '?')} UID {e['new_uid']}"
+        else:
+            line += f" -> {e.get('destination', '?')}"
+        if e.get("method"):
+            line += f" [{e['method']}]"
+        out.append(line)
+        if e.get("subject") or e.get("from"):
+            out.append(f"  {e.get('from', '')} | {e.get('subject', '')}")
+        if e.get("reason"):
+            out.append(f"  reason: {e['reason']}")
+    return "\n".join(out)
