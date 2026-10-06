@@ -87,3 +87,15 @@ def parse_list_response(items: list[bytes | None]) -> list[str]:
             continue
         mailboxes.append(imap_utf7_decode(name))
     return mailboxes
+
+
+def parse_list_separator(items: list[bytes | None]) -> str:
+    """The hierarchy delimiter in the raw response of ``LIST "" ""``, "" if NIL."""
+    for item in items:
+        if item is None:
+            continue
+        line = item.decode("utf-8", errors="replace") if isinstance(item, bytes) else item
+        m = _LIST_RE.match(line)
+        if m:
+            return m.group("sep") or ""
+    return ""

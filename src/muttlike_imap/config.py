@@ -11,7 +11,8 @@ Search order, highest priority first:
 
 Files use ``KEY=VALUE`` lines. Keys are accepted with or without an
 ``IMAP_``/``IMAPQUERY_`` prefix: ``HOST``, ``PORT``, ``USER``, ``PASS``,
-``PASS_CMD``, ``TLS``. ``PASS_CMD`` runs a shell command and uses the first
+``PASS_CMD``, ``TLS``, and ``SEARCH_*`` for ``--search`` (see
+``engine.py``). ``PASS_CMD`` runs a shell command and uses the first
 line of stdout as the password, avoiding plaintext on disk and the
 environment-leak vectors of ``PASS``.
 """
@@ -22,7 +23,18 @@ import os
 import subprocess
 from pathlib import Path
 
-CANONICAL_KEYS = ("HOST", "PORT", "USER", "PASS", "PASS_CMD", "TLS")
+CANONICAL_KEYS = (
+    "HOST",
+    "PORT",
+    "USER",
+    "PASS",
+    "PASS_CMD",
+    "TLS",
+    "SEARCH_CMD",
+    "SEARCH_ENGINE",
+    "SEARCH_LAYOUT",
+    "SEARCH_ROOT",
+)
 ACCEPTED_PREFIXES = ("IMAPQUERY_", "IMAP_", "")
 PASSWORD_CMD_TIMEOUT = 10
 

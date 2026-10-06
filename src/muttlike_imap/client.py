@@ -14,7 +14,8 @@ import sys
 from datetime import datetime, timezone
 from typing import Any, BinaryIO
 
-from .mailbox import imap_utf7_encode, parse_list_response
+from . import engine
+from .mailbox import imap_utf7_encode, parse_list_response, parse_list_separator
 from .parser import compile_pattern
 
 DEFAULT_TIMEOUT = 20
@@ -190,10 +191,12 @@ def _record_for(
     msg: email.message.Message,
     include_body: bool = False,
     uidvalidity: str = "",
+    mailbox: str = "",
 ) -> dict[str, Any]:
     record: dict[str, Any] = {
         "uid": uid.decode(),
         "uidvalidity": uidvalidity,
+        "mailbox": mailbox,
         "from": decode_header(msg.get("From", "")),
         "to": decode_header(msg.get("To", "")),
         "cc": decode_header(msg.get("CC", "")),
@@ -230,7 +233,11 @@ def fetch_by_uids(
             continue
         _prefix, body = item
         msg = email.message_from_bytes(body)
-        results.append(_record_for(uid, msg, include_body=include_body, uidvalidity=uidvalidity))
+        results.append(
+            _record_for(
+                uid, msg, include_body=include_body, uidvalidity=uidvalidity, mailbox=mailbox
+            )
+        )
     imap.logout()
     return results
 
@@ -278,7 +285,13 @@ def search(
             msg = email.message_from_bytes(body)
             if all(p(msg, internaldate) for p in compiled.predicates):
                 results.append(
-                    _record_for(uid, msg, include_body=include_body, uidvalidity=uidvalidity)
+                    _record_for(
+                        uid,
+                        msg,
+                        include_body=include_body,
+                        uidvalidity=uidvalidity,
+                        mailbox=mailbox,
+                    )
                 )
                 if len(results) >= limit:
                     break
@@ -293,11 +306,199 @@ def search(
         if item is None:
             continue
         msg = email.message_from_bytes(item[1])
-        results.append(_record_for(uid, msg, include_body=include_body, uidvalidity=uidvalidity))
+        results.append(
+            _record_for(
+                uid, msg, include_body=include_body, uidvalidity=uidvalidity, mailbox=mailbox
+            )
+        )
 
     imap.logout()
     return results
 
+
+# ---------- Searching through an external engine ----------
+
+
+def _delimiter(imap: imaplib.IMAP4) -> str:
+    """The server's hierarchy delimiter (``LIST "" ""``), "." if it has none."""
+    typ, data = imap.list('""', '""')
+    if typ == "OK" and data:
+        sep = parse_list_separator(data)
+        if sep:
+            return sep
+    return "."
+
+
+def _search_uids(imap: imaplib.IMAP4, criteria: str, fallback: str) -> list[bytes]:
+    """``UID SEARCH`` in the selected folder; ``fallback`` if UTF-8 is refused."""
+    try:
+        typ, data = imap.uid("SEARCH", "CHARSET", "UTF-8", criteria.encode("utf-8"))
+    except imaplib.IMAP4.error:
+        typ, data = imap.uid("SEARCH", "CHARSET", "UTF-8", fallback.encode("ascii", "replace"))
+    if typ != "OK" or not data or not data[0]:
+        return []
+    return data[0].split()
+
+
+def _uid_set(uids: list[bytes]) -> str:
+    """A compact IMAP sequence set (``3:5,9``) for ``uids``."""
+    nums = sorted({int(u) for u in uids})
+    parts: list[str] = []
+    i = 0
+    while i < len(nums):
+        j = i
+        while j + 1 < len(nums) and nums[j + 1] == nums[j] + 1:
+            j += 1
+        parts.append(str(nums[i]) if i == j else f"{nums[i]}:{nums[j]}")
+        i = j + 1
+    return ",".join(parts)
+
+
+_FETCH_UID_RE = re.compile(rb"UID (\d+)")
+
+
+def _message_ids(
+    imap: imaplib.IMAP4, uids: list[bytes], batch: int = 1000
+) -> dict[str, list[bytes]]:
+    """Message-ID (without angle brackets) -> UIDs, for ``uids`` in the selected folder."""
+    out: dict[str, list[bytes]] = {}
+    for i in range(0, len(uids), batch):
+        typ, data = imap.uid(
+            "FETCH", _uid_set(uids[i : i + batch]), "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])"
+        )
+        if typ != "OK" or not data:
+            continue
+        for item in data:
+            if not (isinstance(item, tuple) and len(item) == 2):
+                continue
+            m = _FETCH_UID_RE.search(item[0])
+            if not m:
+                continue
+            mid = (email.message_from_bytes(item[1]).get("Message-ID", "") or "").strip()
+            if mid:
+                out.setdefault(mid.strip("<>"), []).append(m.group(1))
+    return out
+
+
+def search_engine(
+    config: dict[str, str],
+    query: str,
+    pattern: str = "ALL",
+    limit: int = 10,
+    me: str | None = None,
+    timeout: int = DEFAULT_TIMEOUT,
+    include_body: bool = False,
+) -> list[dict[str, Any]]:
+    """Messages matching ``query`` in the configured search engine (see ``engine.py``).
+
+    Each match is located over IMAP in the folder its file lies in, by
+    Message-ID; a message with copies in several folders gives one record
+    per copy. ``pattern``, a mutt pattern, further restricts the results
+    on the IMAP side. Results come newest first, as the engine sorts them,
+    at most ``limit`` of them.
+    """
+    if me is None:
+        me = config.get("USER", "")
+    layout = config.get("SEARCH_LAYOUT", "maildir++").lower()
+    root = config.get("SEARCH_ROOT", "")
+    restrict = pattern.strip() not in ("", "ALL")
+    compiled = compile_pattern(pattern, fold_only=False, me=me) if restrict else None
+    folded = compile_pattern(pattern, fold_only=True, me=me) if restrict else None
+    # Without a pattern, most matches are kept: ask the engine for what is
+    # needed. With one, many may be dropped: ask for more at a time.
+    chunk = max(limit, 200) if restrict else limit
+    found = engine.matches(config, query, timeout, chunk)
+
+    imap = imap_connect(config, timeout)
+    try:
+        delimiter = _delimiter(imap)
+        uidvalidities: dict[str, str] = {}
+        selected = ""
+
+        def select(folder: str) -> bool:
+            nonlocal selected
+            if folder == selected:
+                return True
+            typ, _ = imap.select(_quote_mailbox(folder), readonly=True)
+            if typ != "OK":
+                selected = ""
+                return False
+            selected = folder
+            _typ, data = imap.response("UIDVALIDITY")
+            value = data[0] if data else None
+            uidvalidities[folder] = value.decode() if isinstance(value, bytes) else ""
+            return True
+
+        # With a pattern: Message-ID -> UIDs of the messages matching it, per
+        # folder. One search and one header fetch per folder, whatever the
+        # number of matches the engine returns.
+        matching: dict[str, dict[str, list[bytes]]] = {}
+
+        def lookup(folder: str, mid: str) -> list[bytes]:
+            if compiled is None or folded is None:
+                term = "HEADER Message-ID " + _quote_string(mid)
+                return _search_uids(imap, term, term)
+            if folder not in matching:
+                uids = _search_uids(imap, compiled.criteria, folded.criteria)
+                matching[folder] = _message_ids(imap, uids)
+            return matching[folder].get(mid, [])
+
+        results: list[dict[str, Any]] = []
+        seen: set[tuple[str, bytes]] = set()
+        exhausted = False
+        while len(results) < limit and not exhausted:
+            batch: list[engine.Match] = []
+            for m in found:
+                batch.append(m)
+                if len(batch) >= chunk:
+                    break
+            else:
+                exhausted = True
+            # Group by folder, so that each folder is selected once per batch.
+            by_folder: dict[str, list[tuple[int, str]]] = {}
+            for rank, m in enumerate(batch):
+                for path in m.paths:
+                    folder = engine.folder_for_path(path, delimiter, layout, root)
+                    if folder and (rank, m.message_id) not in by_folder.get(folder, []):
+                        by_folder.setdefault(folder, []).append((rank, m.message_id))
+            candidates: list[tuple[int, str, bytes]] = []
+            for folder, wanted in by_folder.items():
+                if not select(folder):
+                    continue
+                for rank, mid in wanted:
+                    for uid in lookup(folder, mid):
+                        if (folder, uid) not in seen:
+                            seen.add((folder, uid))
+                            candidates.append((rank, folder, uid))
+            # Fetch in the engine's order, only as many as needed.
+            candidates.sort(key=lambda c: c[0])
+            for _rank, folder, uid in candidates:
+                if len(results) >= limit:
+                    break
+                if not select(folder):
+                    continue
+                item = _uid_fetch(imap, uid, "(INTERNALDATE RFC822)")
+                if item is None:
+                    continue
+                prefix, body = item
+                msg = email.message_from_bytes(body)
+                if compiled and compiled.predicates:
+                    internaldate = _parse_internaldate(prefix) or datetime.now(timezone.utc)
+                    if not all(p(msg, internaldate) for p in compiled.predicates):
+                        continue
+                results.append(
+                    _record_for(
+                        uid,
+                        msg,
+                        include_body=include_body,
+                        uidvalidity=uidvalidities[folder],
+                        mailbox=folder,
+                    )
+                )
+        return results
+    finally:
+        with contextlib.suppress(Exception):
+            imap.logout()
 
 # ---------- Saving attachments ----------
 
@@ -404,13 +605,14 @@ def save_attachments(
                     {
                         "uid": uid_str,
                         "uidvalidity": current,
+                        "mailbox": mailbox,
                         "status": "skipped",
                         "reason": "no message with this UID",
                     }
                 )
                 continue
             msg = email.message_from_bytes(item[1])
-            rec = _record_for(uid_str.encode(), msg, uidvalidity=current)
+            rec = _record_for(uid_str.encode(), msg, uidvalidity=current, mailbox=mailbox)
             chosen, rec["unmatched"] = select_attachments(attachments(msg), selectors)
             rec["saved"] = []
             if not chosen:
@@ -444,10 +646,14 @@ def save_attachments(
 # ---------- Moving messages ----------
 
 
+def _quote_string(value: str) -> str:
+    """An IMAP quoted string."""
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
 def _quote_mailbox(name: str) -> str:
     """mUTF-7-encode (if needed) and quote a mailbox name for a command."""
-    encoded = name if name.isascii() else imap_utf7_encode(name)
-    return '"' + encoded.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return _quote_string(name if name.isascii() else imap_utf7_encode(name))
 
 
 def _capabilities(imap: imaplib.IMAP4) -> set[str]:

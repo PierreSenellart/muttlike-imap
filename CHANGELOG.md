@@ -12,6 +12,12 @@ adheres to [Semantic Versioning](https://semver.org/).
 - `--save-attachments DIR` (with `--uid`, optionally `--attachment` and
   `--uidvalidity`) saves attachments into `DIR` without ever
   overwriting a file, or to standard output with `DIR` `-`.
+- `--search QUERY` finds messages across all folders with an external
+  search engine (notmuch, possibly over `ssh`, or any command printing
+  Message-IDs and file paths), then locates them over IMAP; an optional
+  mutt pattern filters the matches. Configured with `SEARCH_CMD`,
+  `SEARCH_ENGINE`, `SEARCH_LAYOUT` and `SEARCH_ROOT`.
+- `mailbox` field in each record: the folder the message is in.
 - `--move-to FOLDER` (with `--uid`, optionally `--uidvalidity` and
   `--dry-run`) moves messages to another folder without any risk of
   losing them: atomic `UID MOVE` when the server supports it, otherwise

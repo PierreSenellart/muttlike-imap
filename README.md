@@ -62,7 +62,8 @@ the same enumerations where applicable.
 first):
 
 1. CLI flags: `--imap-host`, `--imap-port`, `--imap-user`,
-   `--imap-password-cmd`, `--imap-password-env`, `--imap-tls`.
+   `--imap-password-cmd`, `--imap-password-env`, `--imap-tls`,
+   `--search-cmd`.
 2. Environment variables: `IMAPQUERY_HOST`, `IMAPQUERY_PORT`, `IMAPQUERY_USER`,
    `IMAPQUERY_PASS`, `IMAPQUERY_TLS`.
 3. The file pointed to by `$IMAPQUERY_CONFIG`, if set.
@@ -146,6 +147,49 @@ muttlike-imap "~U" | jq '.[] | {uid, subject, from}'
 # Discover available folders
 muttlike-imap --list-mailboxes
 ```
+
+## Searching with notmuch or another engine
+
+IMAP `SEARCH` looks at one folder at a time, with substring matching
+only. If your mail is also indexed by a search engine such as
+[notmuch](https://notmuchmail.org/), `--search` queries it across all
+folders, then finds each match over IMAP so that the results are
+ordinary records (real UIDs, plus the `mailbox` they are in), usable
+with `--uid`, `--move-to` and `--save-attachments`. A mutt pattern, if
+given, further filters the matches on the IMAP side.
+
+```sh
+muttlike-imap --search 'from:alice and attachment:pdf and date:1y..' --summary
+muttlike-imap --search 'subject:"project x"' '~U' --limit 20
+```
+
+The engine must index the maildirs that the IMAP server serves (for
+instance Dovecot's), whether it runs on the server or on a synced copy:
+the folder of each match is read from the path of its file, and the
+message is then located in that folder by its Message-ID. Configure it
+with these keys, in the config file or as `IMAPQUERY_*` environment
+variables:
+
+| Key | Meaning |
+|-----|---------|
+| `SEARCH_CMD` | Command running the engine (default `notmuch`), e.g. `ssh -q mailhost notmuch`; `--search-cmd` overrides it. Arguments are appended, quoted, and quoted a second time for the remote shell when the command starts with `ssh`. |
+| `SEARCH_ENGINE` | `notmuch` (default) or `lines`. With `lines`, `SEARCH_CMD` receives the query as its only argument and prints one `<message-id><TAB><path>` line per matching file, newest first: a few lines of script adapt mairix or any other engine to it. |
+| `SEARCH_LAYOUT` | How folders are stored on disk: `maildir++` (default: `.Sub.Folder` directories next to the INBOX's `cur` and `new`, as in Dovecot's default) or `fs` (one directory per folder, nested). |
+| `SEARCH_ROOT` | With `fs`: the directory holding the INBOX, as the engine sees it. |
+
+For example, with notmuch running on the mail server:
+
+```ini
+SEARCH_CMD=ssh -q mail.example.com notmuch
+```
+
+With notmuch, each batch of results costs two engine calls
+(`notmuch search` for the Message-IDs, newest first, and `notmuch show`
+for their files); with `ssh`, a `ControlMaster` connection makes these
+cheap. A message with copies in several folders gives one record per
+copy. If the engine also indexes files that the IMAP server does not
+serve, such as a folder of search results made of symbolic links,
+exclude them from the index or expect them among the results.
 
 ## Moving messages
 

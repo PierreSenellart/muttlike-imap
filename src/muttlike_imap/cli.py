@@ -14,6 +14,7 @@ from .client import (
     move_messages,
     save_attachments,
     search,
+    search_engine,
 )
 from .completions import SCRIPTS, get_completion
 from .config import load_config, resolve_password
@@ -30,6 +31,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--limit", type=int, default=10, help="Maximum number of results (default: 10).")
     p.add_argument("--mailbox", default="INBOX", help="IMAP folder to search (default: INBOX).")
+    p.add_argument(
+        "--search",
+        metavar="QUERY",
+        help=(
+            "Find messages in all folders with an external search engine (notmuch by "
+            "default, see SEARCH_CMD); the pattern, if any, further filters them."
+        ),
+    )
     p.add_argument("--summary", action="store_true", help="Human-readable output instead of JSON.")
     p.add_argument("--body", action="store_true", help="Include full body text in output.")
     p.add_argument(
@@ -102,6 +111,11 @@ def build_parser() -> argparse.ArgumentParser:
     conn.add_argument("--imap-tls", choices=("true", "false"), help="Use TLS (default true).")
     conn.add_argument("--config", help="Path to a config file (overrides default search).")
     conn.add_argument(
+        "--search-cmd",
+        metavar="CMD",
+        help='Command running the search engine for --search, e.g. "ssh -q host notmuch".',
+    )
+    conn.add_argument(
         "--timeout",
         type=int,
         default=DEFAULT_TIMEOUT,
@@ -136,6 +150,8 @@ def _build_config(args: argparse.Namespace) -> dict[str, str]:
         overrides["USER"] = args.imap_user
     if args.imap_tls:
         overrides["TLS"] = args.imap_tls
+    if args.search_cmd:
+        overrides["SEARCH_CMD"] = args.search_cmd
 
     config = load_config(overrides)
     pwd = resolve_password(config, args.imap_password_env, args.imap_password_cmd)
@@ -159,6 +175,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--uidvalidity only applies to --move-to and --save-attachments")
     if args.attachment and not args.save_attachments:
         parser.error("--attachment only applies to --save-attachments")
+    if args.search is not None and (args.uid or args.mailbox != "INBOX" or args.list_mailboxes):
+        parser.error("--search covers all folders: no --uid, --mailbox or --list-mailboxes")
     if args.completion:
         sys.stdout.write(get_completion(args.completion))
         return 0
@@ -207,6 +225,16 @@ def main(argv: list[str] | None = None) -> int:
                 mailbox=args.mailbox,
                 include_body=args.body,
                 timeout=args.timeout,
+            )
+        elif args.search is not None:
+            results = search_engine(
+                config,
+                args.search,
+                pattern=args.pattern,
+                limit=args.limit,
+                me=me,
+                timeout=args.timeout,
+                include_body=args.body,
             )
         else:
             results = search(

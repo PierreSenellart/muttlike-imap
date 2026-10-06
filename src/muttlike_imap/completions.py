@@ -23,6 +23,7 @@ _muttlike-imap() {
     _arguments -s -S \
         '--limit[Maximum number of results (default 10)]:limit:' \
         '--mailbox[IMAP folder to search (default INBOX)]:mailbox:_muttlike-imap-mailboxes' \
+        '--search[Search all folders with an external engine]:query:' \
         '--summary[Human-readable output instead of JSON]' \
         '--body[Include full body text in output]' \
         '*--uid[Fetch specific messages by UID instead of searching]:uid:' \
@@ -40,6 +41,7 @@ _muttlike-imap() {
         '--imap-password-cmd[Shell command that prints the password]:command:' \
         '--imap-tls[Use TLS (default true)]:bool:(true false)' \
         '--config[Path to a config file]:config file:_files' \
+        '--search-cmd[Command running the search engine]:command:' \
         '--timeout[Socket timeout in seconds]:seconds:' \
         '--completion[Print a shell completion script]:shell:(bash zsh fish)' \
         '--version[Show version and exit]' \
@@ -67,11 +69,11 @@ _muttlike_imap() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    opts="--limit --mailbox --summary --body --uid --move-to \
+    opts="--limit --mailbox --search --summary --body --uid --move-to \
           --save-attachments --attachment --uidvalidity \
           --dry-run --list-mailboxes --me \
           --imap-host --imap-port --imap-user --imap-password-env \
-          --imap-password-cmd --imap-tls --config --timeout \
+          --imap-password-cmd --imap-tls --config --search-cmd --timeout \
           --completion --version --help"
 
     case "${prev}" in
@@ -111,6 +113,7 @@ FISH = r"""# Fish completion for muttlike-imap.
 
 complete -c muttlike-imap -l limit -x -d 'Maximum number of results (default 10)'
 complete -c muttlike-imap -l mailbox -x -d 'IMAP folder to search (default INBOX)'
+complete -c muttlike-imap -l search -x -d 'Search all folders with an external engine'
 complete -c muttlike-imap -l summary -d 'Human-readable output instead of JSON'
 complete -c muttlike-imap -l body -d 'Include full body text in output'
 complete -c muttlike-imap -l uid -x -d 'Fetch specific messages by UID instead of searching'
@@ -128,6 +131,7 @@ complete -c muttlike-imap -l imap-password-env -x -d 'Read password from this en
 complete -c muttlike-imap -l imap-password-cmd -x -d 'Shell command that prints the password'
 complete -c muttlike-imap -l imap-tls -x -a 'true false' -d 'Use TLS'
 complete -c muttlike-imap -l config -r -d 'Path to a config file'
+complete -c muttlike-imap -l search-cmd -x -d 'Command running the search engine'
 complete -c muttlike-imap -l timeout -x -d 'Socket timeout in seconds'
 complete -c muttlike-imap -l completion -x -a 'bash zsh fish' -d 'Print a shell completion script'
 complete -c muttlike-imap -l version -d 'Show version and exit'
