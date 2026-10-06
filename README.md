@@ -331,6 +331,13 @@ results = search(config, "~f alice ~U", limit=10, mailbox="INBOX")
 for r in results:
     print(r["subject"])
 
+# The other operations of the command line:
+from muttlike_imap import move_messages, save_attachments, search_engine
+
+search_engine(config, "from:alice and attachment:pdf", pattern="~U", limit=10)
+save_attachments(config, ["4520"], "/tmp", mailbox="INBOX", selectors=["report.pdf"])
+move_messages(config, ["4520"], "Archive", mailbox="INBOX", dry_run=True)
+
 # Or just use the parser:
 parse_pattern("(~f a | ~f b) ~U")
 # → 'OR (FROM "a") (FROM "b") UNSEEN'

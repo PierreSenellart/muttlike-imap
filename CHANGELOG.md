@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.0]
+
 ### Added
 - `attachments` field in each record: number, file name, content type
   and size of each attachment; also shown by `--summary`.
@@ -18,6 +20,8 @@ adheres to [Semantic Versioning](https://semver.org/).
   mutt pattern filters the matches. Configured with `SEARCH_CMD`,
   `SEARCH_ENGINE`, `SEARCH_LAYOUT` and `SEARCH_ROOT`.
 - `mailbox` field in each record: the folder the message is in.
+- Library API: `search_engine`, `move_messages`, `save_attachments`,
+  `attachments` and `select_attachments` are exported by the package.
 - `--move-to FOLDER` (with `--uid`, optionally `--uidvalidity` and
   `--dry-run`) moves messages to another folder without any risk of
   losing them: atomic `UID MOVE` when the server supports it, otherwise
@@ -131,7 +135,8 @@ First public release.
   variable.
 - Library API: `parse_pattern`, `search`, `list_mailboxes`, `load_config`.
 
-[Unreleased]: https://github.com/PierreSenellart/muttlike-imap/compare/v1.1.3...HEAD
+[Unreleased]: https://github.com/PierreSenellart/muttlike-imap/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.2.0
 [1.1.3]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.1.3
 [1.1.2]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.1.2
 [1.1.1]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.1.1
