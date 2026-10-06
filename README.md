@@ -179,6 +179,46 @@ destination when known, and a `reason` when something was held back.
 The exit status is 0 when every message was moved, 2 when some were
 not, 1 on error.
 
+## Attachments
+
+Each record lists the message's attachments, numbered from 1:
+
+```json
+"attachments": [
+  {"index": 1, "filename": "report.pdf", "content_type": "application/pdf", "size": 120412}
+]
+```
+
+Every part except the displayable text counts as an attachment: a
+`text/plain` or `text/html` part is one only if it has a file name or
+`Content-Disposition: attachment`. An attached email is one attachment
+(saved as `.eml`).
+
+`--save-attachments DIR` saves the attachments of the messages given by
+`--uid` into `DIR`; `--attachment` restricts to some of them, by number
+or by file name. `--uidvalidity` can be passed as for `--move-to`.
+
+```sh
+muttlike-imap --uid 4520 --save-attachments ~/Downloads
+muttlike-imap --uid 4520 --save-attachments ~/Downloads --attachment 2 notes.txt
+muttlike-imap --uid 4520 --save-attachments - --attachment report.pdf | pdftotext - -
+```
+
+- An existing file is never overwritten: `report.pdf` becomes
+  `report-1.pdf`, `report-2.pdf`…
+- File names are reduced to their last path component, without leading
+  dots or control characters, so an attachment cannot be written outside
+  `DIR`. A part without a name is saved as `attachment-N` with an
+  extension guessed from its type.
+- `DIR` `-` writes the attachment to standard output; exactly one must
+  then be selected.
+
+Each message gets a record with `saved` (the `index`, `filename` and
+`path` of each file written), `unmatched` (selectors that designate no
+attachment) and a `status`: `saved`, `partial` or `skipped`. The exit
+status is 0 when everything requested was saved, 2 otherwise, 1 on
+error.
+
 ## Pattern syntax
 
 `A B` is AND (juxtaposition), `A | B` is OR, `!A` is NOT, and `(...)` groups.

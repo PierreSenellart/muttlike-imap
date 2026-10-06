@@ -6,9 +6,13 @@ import contextlib
 import email
 import email.header
 import imaplib
+import mimetypes
+import os
 import re
 import socket
+import sys
 from datetime import datetime, timezone
+from typing import Any, BinaryIO
 
 from .mailbox import imap_utf7_encode, parse_list_response
 from .parser import compile_pattern
@@ -61,6 +65,54 @@ def get_preview(msg: email.message.Message, max_chars: int | None = 300) -> str:
         return msg.get_payload(decode=True).decode(charset, errors="replace")[:max_chars].strip()
     except Exception:
         return ""
+
+
+def _leaf_parts(part: email.message.Message):
+    """Leaf MIME parts of ``part``, depth-first; attached messages count as leaves."""
+    if part.get_content_maintype() == "multipart" and isinstance(part.get_payload(), list):
+        for sub in part.get_payload():
+            yield from _leaf_parts(sub)
+    else:
+        yield part
+
+
+def attachments(msg: email.message.Message) -> list[dict[str, Any]]:
+    """The parts of ``msg`` other than its displayable text, numbered from 1.
+
+    A leaf part is an attachment unless it is ``text/plain`` or
+    ``text/html`` with neither a file name nor ``Content-Disposition:
+    attachment``; an attached ``message/rfc822`` is one attachment, not
+    descended into. Each entry has ``index``, ``filename`` (decoded, or
+    "" when the part has none), ``content_type``, ``size`` (decoded
+    bytes) and ``data`` (the decoded bytes themselves).
+    """
+    out: list[dict[str, Any]] = []
+    if not msg.is_multipart():
+        return out
+    for part in _leaf_parts(msg):
+        ctype = part.get_content_type()
+        try:
+            filename = decode_header(part.get_filename() or "")
+        except Exception:
+            filename = ""
+        disposition = (part.get_content_disposition() or "").lower()
+        if ctype in ("text/plain", "text/html") and not filename and disposition != "attachment":
+            continue
+        if ctype == "message/rfc822" and isinstance(part.get_payload(), list):
+            inner = part.get_payload()
+            data = inner[0].as_bytes() if inner else b""
+        else:
+            data = part.get_payload(decode=True) or b""
+        out.append(
+            {
+                "index": len(out) + 1,
+                "filename": filename,
+                "content_type": ctype,
+                "size": len(data),
+                "data": data,
+            }
+        )
+    return out
 
 
 def imap_connect(config: dict[str, str], timeout: int = DEFAULT_TIMEOUT) -> imaplib.IMAP4:
@@ -138,8 +190,8 @@ def _record_for(
     msg: email.message.Message,
     include_body: bool = False,
     uidvalidity: str = "",
-) -> dict[str, str]:
-    record: dict[str, str] = {
+) -> dict[str, Any]:
+    record: dict[str, Any] = {
         "uid": uid.decode(),
         "uidvalidity": uidvalidity,
         "from": decode_header(msg.get("From", "")),
@@ -151,6 +203,10 @@ def _record_for(
         "in_reply_to": " ".join((msg.get("In-Reply-To", "") or "").split()),
         "references": " ".join((msg.get("References", "") or "").split()),
         "preview": get_preview(msg),
+        "attachments": [
+            {k: a[k] for k in ("index", "filename", "content_type", "size")}
+            for a in attachments(msg)
+        ],
     }
     if include_body:
         record["body"] = get_preview(msg, max_chars=None)
@@ -163,10 +219,10 @@ def fetch_by_uids(
     mailbox: str = "INBOX",
     include_body: bool = False,
     timeout: int = DEFAULT_TIMEOUT,
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     imap = imap_connect(config, timeout)
     uidvalidity = _select(imap, mailbox)
-    results: list[dict[str, str]] = []
+    results: list[dict[str, Any]] = []
     for uid_str in uids:
         uid = uid_str.encode()
         item = _uid_fetch(imap, uid, "(INTERNALDATE RFC822)")
@@ -187,7 +243,7 @@ def search(
     me: str | None = None,
     timeout: int = DEFAULT_TIMEOUT,
     include_body: bool = False,
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     if me is None:
         me = config.get("USER", "")
     imap = imap_connect(config, timeout)
@@ -212,7 +268,7 @@ def search(
     if compiled.predicates:
         # Walk newest-first across the full candidate set, applying the
         # post-filter predicates. Stop once we've collected ``limit`` matches.
-        results: list[dict[str, str]] = []
+        results: list[dict[str, Any]] = []
         for uid in reversed(all_uids):
             item = _uid_fetch(imap, uid, fetch_atom)
             if item is None:
@@ -242,6 +298,148 @@ def search(
     imap.logout()
     return results
 
+
+# ---------- Saving attachments ----------
+
+
+def _safe_filename(attachment: dict[str, Any]) -> str:
+    """A file name for ``attachment`` that cannot leave the target directory."""
+    name = attachment["filename"].replace("\\", "/").split("/")[-1]
+    name = "".join(c for c in name if c.isprintable()).strip().lstrip(".")
+    if not name:
+        ext = mimetypes.guess_extension(attachment["content_type"]) or ".bin"
+        name = f"attachment-{attachment['index']}{ext}"
+    return name
+
+
+def _write_new(directory: str, name: str, data: bytes) -> str:
+    """Write ``data`` to a file named after ``name`` that did not exist; return its path.
+
+    An existing file is never overwritten: ``report.pdf`` becomes
+    ``report-1.pdf``, ``report-2.pdf``… The file is created with
+    ``O_EXCL``, so this also holds against a concurrent writer.
+    """
+    stem, ext = os.path.splitext(name)
+    n = 0
+    while True:
+        path = os.path.join(directory, name if n == 0 else f"{stem}-{n}{ext}")
+        try:
+            with open(path, "xb") as f:
+                f.write(data)
+            return path
+        except FileExistsError:
+            n += 1
+
+
+def select_attachments(
+    found: list[dict[str, Any]], selectors: list[str] | None
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Pick from ``found`` (see :func:`attachments`) the ones ``selectors`` designate.
+
+    A selector made of digits is an attachment number; any other is a
+    file name, matched exactly against the decoded file name. Without
+    selectors, every attachment is picked. Returns the picked
+    attachments, in message order, and the selectors that matched none.
+    """
+    if not selectors:
+        return list(found), []
+    picked: set[int] = set()
+    unmatched: list[str] = []
+    for sel in selectors:
+        hits = [
+            a["index"]
+            for a in found
+            if (a["index"] == int(sel) if sel.isdigit() else a["filename"] == sel)
+        ]
+        if not hits:
+            unmatched.append(sel)
+        picked.update(hits)
+    return [a for a in found if a["index"] in picked], unmatched
+
+
+def save_attachments(
+    config: dict[str, str],
+    uids: list[str],
+    directory: str,
+    mailbox: str = "INBOX",
+    selectors: list[str] | None = None,
+    uidvalidity: str = "",
+    timeout: int = DEFAULT_TIMEOUT,
+    stdout: BinaryIO | None = None,
+) -> list[dict[str, Any]]:
+    """Save attachments of the messages ``uids`` of ``mailbox`` into ``directory``.
+
+    ``selectors`` restricts which attachments are saved (see
+    :func:`select_attachments`); by default all are. Files are never
+    overwritten (see :func:`_write_new`). If ``uidvalidity`` is given
+    and differs from the folder's, nothing is saved.
+
+    ``directory`` ``-`` writes the attachment to ``stdout`` (default:
+    the process's standard output) instead; exactly one attachment
+    must then be selected, over all the messages.
+
+    Returns one record per UID: the usual fields, plus ``saved`` (a list
+    of ``{index, filename, path}``), ``unmatched`` (selectors that
+    designate no attachment of this message) and a ``status``: ``saved``,
+    ``partial`` (some selectors unmatched) or ``skipped`` (no such UID,
+    or nothing to save).
+    """
+    to_stdout = directory == "-"
+    if not to_stdout and not os.path.isdir(directory):
+        raise RuntimeError(f"{directory!r} is not a directory")
+    imap = imap_connect(config, timeout)
+    try:
+        current = _select(imap, mailbox)
+        if uidvalidity and current and uidvalidity != current:
+            raise RuntimeError(
+                f"UIDVALIDITY of {mailbox!r} is {current}, not {uidvalidity}: "
+                "the folder was renumbered, re-read the UIDs"
+            )
+        picked: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
+        results: list[dict[str, Any]] = []
+        for uid_str in uids:
+            item = _uid_fetch(imap, uid_str.encode(), "(RFC822)")
+            if item is None:
+                results.append(
+                    {
+                        "uid": uid_str,
+                        "uidvalidity": current,
+                        "status": "skipped",
+                        "reason": "no message with this UID",
+                    }
+                )
+                continue
+            msg = email.message_from_bytes(item[1])
+            rec = _record_for(uid_str.encode(), msg, uidvalidity=current)
+            chosen, rec["unmatched"] = select_attachments(attachments(msg), selectors)
+            rec["saved"] = []
+            if not chosen:
+                rec.update(status="skipped", reason="no attachment to save")
+            else:
+                rec["status"] = "partial" if rec["unmatched"] else "saved"
+            picked.append((rec, chosen))
+            results.append(rec)
+    finally:
+        with contextlib.suppress(Exception):
+            imap.logout()
+
+    if to_stdout:
+        total = sum(len(chosen) for _rec, chosen in picked)
+        if total != 1:
+            raise RuntimeError(
+                f"writing to standard output needs exactly one attachment, {total} selected"
+            )
+    for rec, chosen in picked:
+        for a in chosen:
+            if to_stdout:
+                out = stdout if stdout is not None else sys.stdout.buffer
+                out.write(a["data"])
+                out.flush()
+                path = "-"
+            else:
+                path = _write_new(directory, _safe_filename(a), a["data"])
+            rec["saved"].append({"index": a["index"], "filename": a["filename"], "path": path})
+    return results
 
 # ---------- Moving messages ----------
 

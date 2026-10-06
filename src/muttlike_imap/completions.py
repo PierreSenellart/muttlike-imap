@@ -27,6 +27,8 @@ _muttlike-imap() {
         '--body[Include full body text in output]' \
         '*--uid[Fetch specific messages by UID instead of searching]:uid:' \
         '--move-to[Move the --uid messages to this folder]:folder:_muttlike-imap-mailboxes' \
+        '--save-attachments[Save the attachments of the --uid messages]:directory:_files -/' \
+        '*--attachment[Only these attachments (number or file name)]:attachment:' \
         '--uidvalidity[UIDVALIDITY the UIDs were read under]:uidvalidity:' \
         '--dry-run[With --move-to, show what would move]' \
         '--list-mailboxes[List available IMAP folders and exit]' \
@@ -65,7 +67,8 @@ _muttlike_imap() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    opts="--limit --mailbox --summary --body --uid --move-to --uidvalidity \
+    opts="--limit --mailbox --summary --body --uid --move-to \
+          --save-attachments --attachment --uidvalidity \
           --dry-run --list-mailboxes --me \
           --imap-host --imap-port --imap-user --imap-password-env \
           --imap-password-cmd --imap-tls --config --timeout \
@@ -82,6 +85,10 @@ _muttlike_imap() {
             ;;
         --config)
             COMPREPLY=( $(compgen -f -- "${cur}") )
+            return 0
+            ;;
+        --save-attachments)
+            COMPREPLY=( $(compgen -d -- "${cur}") )
             return 0
             ;;
         --imap-password-env)
@@ -108,6 +115,8 @@ complete -c muttlike-imap -l summary -d 'Human-readable output instead of JSON'
 complete -c muttlike-imap -l body -d 'Include full body text in output'
 complete -c muttlike-imap -l uid -x -d 'Fetch specific messages by UID instead of searching'
 complete -c muttlike-imap -l move-to -x -d 'Move the --uid messages to this folder'
+complete -c muttlike-imap -l save-attachments -x -a '(__fish_complete_directories)' -d 'Save attachments of the --uid messages'
+complete -c muttlike-imap -l attachment -x -d 'Only these attachments (number or file name)'
 complete -c muttlike-imap -l uidvalidity -x -d 'UIDVALIDITY the UIDs were read under'
 complete -c muttlike-imap -l dry-run -d 'With --move-to, show what would move'
 complete -c muttlike-imap -l list-mailboxes -d 'List available IMAP folders and exit'

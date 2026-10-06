@@ -7,10 +7,17 @@ import socket
 import sys
 
 from . import __version__
-from .client import DEFAULT_TIMEOUT, fetch_by_uids, list_mailboxes, move_messages, search
+from .client import (
+    DEFAULT_TIMEOUT,
+    fetch_by_uids,
+    list_mailboxes,
+    move_messages,
+    save_attachments,
+    search,
+)
 from .completions import SCRIPTS, get_completion
 from .config import load_config, resolve_password
-from .output import format_json, format_moves, format_summary
+from .output import format_json, format_moves, format_saves, format_summary
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -42,11 +49,29 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     p.add_argument(
+        "--save-attachments",
+        metavar="DIR",
+        help=(
+            "Save the attachments of the messages given by --uid into DIR, never "
+            "overwriting a file; '-' writes a single attachment to standard output."
+        ),
+    )
+    p.add_argument(
+        "--attachment",
+        nargs="+",
+        metavar="N|NAME",
+        help=(
+            "With --save-attachments: only these attachments, by number (as in the "
+            "'attachments' field of records) or by file name."
+        ),
+    )
+    p.add_argument(
         "--uidvalidity",
         metavar="N",
         help=(
-            "With --move-to: the UIDVALIDITY the UIDs were read under (the "
-            "'uidvalidity' field of search results); abort if the folder's differs."
+            "With --move-to or --save-attachments: the UIDVALIDITY the UIDs were "
+            "read under (the 'uidvalidity' field of search results); abort if the "
+            "folder's differs."
         ),
     )
     p.add_argument(
@@ -124,8 +149,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.move_to and not args.uid:
         parser.error("--move-to requires --uid")
-    if (args.uidvalidity or args.dry_run) and not args.move_to:
-        parser.error("--uidvalidity and --dry-run only apply to --move-to")
+    if args.save_attachments and not args.uid:
+        parser.error("--save-attachments requires --uid")
+    if args.move_to and args.save_attachments:
+        parser.error("--move-to and --save-attachments cannot be combined")
+    if args.dry_run and not args.move_to:
+        parser.error("--dry-run only applies to --move-to")
+    if args.uidvalidity and not (args.move_to or args.save_attachments):
+        parser.error("--uidvalidity only applies to --move-to and --save-attachments")
+    if args.attachment and not args.save_attachments:
+        parser.error("--attachment only applies to --save-attachments")
     if args.completion:
         sys.stdout.write(get_completion(args.completion))
         return 0
@@ -148,6 +181,25 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(format_moves(moved) if args.summary else format_json(moved))
             return 0 if all(r["status"] in ("moved", "would-move") for r in moved) else 2
+        if args.save_attachments:
+            saved = save_attachments(
+                config,
+                args.uid,
+                args.save_attachments,
+                mailbox=args.mailbox,
+                selectors=args.attachment,
+                uidvalidity=args.uidvalidity or "",
+                timeout=args.timeout,
+            )
+            ok = all(r["status"] == "saved" for r in saved)
+            if args.save_attachments == "-":
+                # Standard output carries the attachment itself: report
+                # only what went wrong, on standard error.
+                if not ok:
+                    print(format_saves(saved), file=sys.stderr)
+            else:
+                print(format_saves(saved) if args.summary else format_json(saved))
+            return 0 if ok else 2
         if args.uid:
             results = fetch_by_uids(
                 config,

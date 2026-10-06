@@ -7,6 +7,11 @@ adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `attachments` field in each record: number, file name, content type
+  and size of each attachment; also shown by `--summary`.
+- `--save-attachments DIR` (with `--uid`, optionally `--attachment` and
+  `--uidvalidity`) saves attachments into `DIR` without ever
+  overwriting a file, or to standard output with `DIR` `-`.
 - `--move-to FOLDER` (with `--uid`, optionally `--uidvalidity` and
   `--dry-run`) moves messages to another folder without any risk of
   losing them: atomic `UID MOVE` when the server supports it, otherwise
