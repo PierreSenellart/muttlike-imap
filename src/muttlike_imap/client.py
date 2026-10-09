@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import email
 import email.header
+import html
 import imaplib
 import mimetypes
 import os
@@ -40,32 +41,39 @@ def decode_header(value: str) -> str:
     return "".join(out)
 
 
-def get_preview(msg: email.message.Message, max_chars: int | None = 300) -> str:
-    if msg.is_multipart():
-        for part in msg.walk():
-            disp = str(part.get("Content-Disposition", ""))
-            if part.get_content_type() == "text/plain" and "attachment" not in disp:
-                try:
-                    charset = part.get_content_charset() or "utf-8"
-                    payload = part.get_payload(decode=True)
-                    return payload.decode(charset, errors="replace")[:max_chars].strip()
-                except Exception:
-                    pass
-        for part in msg.walk():
-            if part.get_content_type() == "text/html":
-                try:
-                    charset = part.get_content_charset() or "utf-8"
-                    html = part.get_payload(decode=True).decode(charset, errors="replace")
-                    text = re.sub(r"<[^>]+>", " ", html)
-                    return re.sub(r"\s+", " ", text)[:max_chars].strip()
-                except Exception:
-                    pass
-        return ""
+_HTML_DROP_RE = re.compile(r"(?is)<(script|style|head)\b.*?</\1\s*>|<!--.*?-->")
+
+
+def _html_to_text(markup: str) -> str:
+    """Visible text of an HTML document, whitespace-collapsed."""
+    text = _HTML_DROP_RE.sub(" ", markup)
+    text = re.sub(r"<[^>]+>", " ", text)
+    return re.sub(r"\s+", " ", html.unescape(text)).strip()
+
+
+def _decode_part(part: email.message.Message) -> str:
     try:
-        charset = msg.get_content_charset() or "utf-8"
-        return msg.get_payload(decode=True).decode(charset, errors="replace")[:max_chars].strip()
+        charset = part.get_content_charset() or "utf-8"
+        return part.get_payload(decode=True).decode(charset, errors="replace")
     except Exception:
         return ""
+
+
+def get_preview(msg: email.message.Message, max_chars: int | None = 300) -> str:
+    """Text of the message: its first non-blank text/plain part, else the
+    visible text of its first text/html part. Attachments are skipped. A
+    text/plain alternative that is present but blank (some mailers send one
+    alongside the real HTML content) does not hide the HTML part."""
+    plain = rendered = ""
+    for part in msg.walk() if msg.is_multipart() else [msg]:
+        if "attachment" in str(part.get("Content-Disposition", "")):
+            continue
+        ctype = part.get_content_type()
+        if ctype == "text/html":
+            rendered = rendered or _html_to_text(_decode_part(part))
+        elif ctype == "text/plain" or not msg.is_multipart():
+            plain = plain or _decode_part(part).strip()
+    return (plain or rendered)[:max_chars].strip()
 
 
 def _leaf_parts(part: email.message.Message):

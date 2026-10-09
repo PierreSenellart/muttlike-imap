@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Text extraction (`preview`, `--body`) no longer comes out empty for
+  messages whose `text/plain` alternative is present but blank, as some
+  shop mailers send next to the real HTML content: a blank text part now
+  falls back to the HTML part. HTML is rendered more cleanly (`<style>`,
+  `<script>`, `<head>` and comments dropped, entities decoded), including
+  for single-part HTML messages, which were returned as raw markup.
+
 ## [1.2.0]
 
 ### Added

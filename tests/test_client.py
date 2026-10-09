@@ -71,6 +71,55 @@ def test_get_preview_multipart_prefers_text():
     assert client.get_preview(msg) == "plain version"
 
 
+def test_get_preview_blank_text_part_falls_back_to_html():
+    # Some mailers send an (almost) empty text/plain alternative next to the
+    # real HTML content: the HTML must not be hidden by it.
+    raw = (
+        "MIME-Version: 1.0\n"
+        'Content-Type: multipart/alternative; boundary="b"\n\n'
+        "--b\nContent-Type: text/plain; charset=utf-8\n\n\n\n"
+        "--b\nContent-Type: text/html; charset=utf-8\n\n<p>Order 42 confirmed</p>\n"
+        "--b--\n"
+    )
+    msg = email.message_from_string(raw)
+    assert client.get_preview(msg) == "Order 42 confirmed"
+    assert client.get_preview(msg, max_chars=None) == "Order 42 confirmed"
+
+
+def test_get_preview_html_drops_style_script_and_unescapes():
+    raw = (
+        "MIME-Version: 1.0\n"
+        'Content-Type: multipart/alternative; boundary="b"\n\n'
+        "--b\nContent-Type: text/html\n\n"
+        "<html><head><title>T</title><style>p { color: red; }</style></head>"
+        "<body><script>var x = 1;</script><!-- hidden -->"
+        "<p>Caf&eacute;&nbsp;&amp; th&eacute;</p></body></html>\n"
+        "--b--\n"
+    )
+    out = client.get_preview(email.message_from_string(raw))
+    assert out == "Café & thé"
+    assert "color" not in out
+    assert "var x" not in out
+    assert "hidden" not in out
+
+
+def test_get_preview_single_part_html_is_rendered():
+    raw = "MIME-Version: 1.0\nContent-Type: text/html\n\n<p>Hello <b>there</b></p>\n"
+    assert client.get_preview(email.message_from_string(raw)) == "Hello there"
+
+
+def test_get_preview_skips_text_attachment():
+    raw = (
+        "MIME-Version: 1.0\n"
+        'Content-Type: multipart/mixed; boundary="b"\n\n'
+        "--b\nContent-Type: text/plain\nContent-Disposition: attachment; "
+        'filename="notes.txt"\n\nattached notes\n'
+        "--b\nContent-Type: text/html\n\n<p>body text</p>\n"
+        "--b--\n"
+    )
+    assert client.get_preview(email.message_from_string(raw)) == "body text"
+
+
 # ---------- Fake IMAP server ----------
 
 
