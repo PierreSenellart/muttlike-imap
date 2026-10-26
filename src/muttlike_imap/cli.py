@@ -246,7 +246,10 @@ def main(argv: list[str] | None = None) -> int:
                 timeout=args.timeout,
                 include_body=args.body,
             )
-        print(format_summary(results) if args.summary else format_json(results))
+        if args.summary:
+            print(format_summary(results, show_mailbox=args.search is not None))
+        else:
+            print(format_json(results))
         return 0
     except socket.timeout:
         print(f"Error: timed out after {args.timeout}s", file=sys.stderr)

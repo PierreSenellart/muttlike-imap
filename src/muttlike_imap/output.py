@@ -7,14 +7,17 @@ from collections.abc import Iterable
 from typing import Any
 
 
-def format_summary(results: Iterable[dict[str, Any]]) -> str:
+def format_summary(results: Iterable[dict[str, Any]], show_mailbox: bool = False) -> str:
+    """Human-readable results; ``show_mailbox`` names each one's folder (for --search)."""
     results = list(results)
     if not results:
         return "No results."
     out: list[str] = [f"{len(results)} result(s):", ""]
     for e in results:
+        where = f" | Mailbox:{e.get('mailbox', '?')}" if show_mailbox else ""
         out.append(
-            f"UID:{e.get('uid', '?')} | From:{e.get('from', '?')} | Date:{e.get('date', '?')}"
+            f"UID:{e.get('uid', '?')}{where}"
+            f" | From:{e.get('from', '?')} | Date:{e.get('date', '?')}"
         )
         out.append(f"Subject:{e.get('subject', '?')}")
         for a in e.get("attachments") or []:

@@ -40,6 +40,12 @@ def test_summary_truncates_preview_at_300_chars():
     assert len(preview_line) - len("Preview:") == 300
 
 
+def test_summary_mailbox_only_on_request():
+    rec = {"uid": "7", "mailbox": "ulm/psl", "from": "a@x", "date": "Mon", "subject": "s"}
+    assert "Mailbox:" not in format_summary([rec])
+    assert "UID:7 | Mailbox:ulm/psl | From:a@x" in format_summary([rec], show_mailbox=True)
+
+
 def test_summary_handles_missing_keys():
     # Missing fields fall back to "?"
     out = format_summary([{}])
