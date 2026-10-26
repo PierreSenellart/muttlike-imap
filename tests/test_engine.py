@@ -43,6 +43,17 @@ def test_run_failure_reports_stderr():
         engine.run("sh -c 'echo boom >&2; exit 3' x", [], timeout=5)
 
 
+def test_run_partial_returns_output_and_warns(capsys):
+    out = engine.run("sh -c 'echo ok; echo gone >&2; exit 1' x", [], timeout=5, partial=True)
+    assert out == "ok\n"
+    assert "Warning: search command exited with status 1:\ngone" in capsys.readouterr().err
+
+
+def test_run_partial_without_output_fails():
+    with pytest.raises(engine.EngineFailed, match="status 1: gone"):
+        engine.run("sh -c 'echo gone >&2; exit 1' x", [], timeout=5, partial=True)
+
+
 # ---------- paths to folders ----------
 
 
@@ -110,7 +121,7 @@ def test_notmuch_matches_pages_through_results(monkeypatch):
     ids = [f"m{i}@x" for i in range(5)]
     calls: list[list[str]] = []
 
-    def fake_run(cmd, args, timeout):
+    def fake_run(cmd, args, timeout, partial=False):
         calls.append(args)
         if args[0] == "search":
             offset = int(args[4].split("=")[1])
@@ -131,7 +142,7 @@ def test_notmuch_matches_pages_through_results(monkeypatch):
 def test_notmuch_matches_is_lazy(monkeypatch):
     calls: list[list[str]] = []
 
-    def fake_run(cmd, args, timeout):
+    def fake_run(cmd, args, timeout, partial=False):
         calls.append(args)
         if args[0] == "search":
             return json.dumps(["a@x", "b@x"])
@@ -143,9 +154,44 @@ def test_notmuch_matches_is_lazy(monkeypatch):
     assert len(calls) == 2  # one search, one show: nothing fetched ahead
 
 
+def test_notmuch_matches_tolerates_stale_files(monkeypatch, capsys):
+    # notmuch show exits 1 when indexed files have gone, but still shows the
+    # others.
+    def fake_run(cmd, args, timeout, partial=False):
+        if args[0] == "search":
+            return json.dumps(["a@x", "b@x"])
+        assert partial
+        warn = "Error opening /m/.A/cur/old: No such file or directory"
+        engine.warn(warn)
+        return json.dumps([[[{"id": "a@x", "filename": ["/m/cur/a"]}, []]]])
+
+    monkeypatch.setattr(engine, "run", fake_run)
+    found = list(engine.notmuch_matches("notmuch", "q", 5, chunk=10))
+    assert [(m.message_id, m.paths) for m in found] == [("a@x", ["/m/cur/a"]), ("b@x", [])]
+    assert "No such file" in capsys.readouterr().err
+
+
+def test_notmuch_matches_retries_one_by_one(monkeypatch, capsys):
+    shows: list[str] = []
+
+    def fake_run(cmd, args, timeout, partial=False):
+        if args[0] == "search":
+            return json.dumps(["a@x", "b@x"])
+        shows.append(args[-1])
+        if "b@x" in args[-1]:
+            raise engine.EngineFailed("search command exited with status 1: boom")
+        return json.dumps([[[{"id": "a@x", "filename": ["/m/cur/a"]}, []]]])
+
+    monkeypatch.setattr(engine, "run", fake_run)
+    found = list(engine.notmuch_matches("notmuch", "q", 5, chunk=10))
+    assert [(m.message_id, m.paths) for m in found] == [("a@x", ["/m/cur/a"]), ("b@x", [])]
+    assert shows == ['id:"a@x" or id:"b@x"', 'id:"a@x"', 'id:"b@x"']
+    assert "skipping <b@x>" in capsys.readouterr().err
+
+
 def test_lines_matches(monkeypatch):
     out = "<a@x>\t/m/cur/1\nb@x\t/m/.A/cur/2\na@x\t/m/.B/cur/3\ngarbage\n"
-    monkeypatch.setattr(engine, "run", lambda cmd, args, timeout: out)
+    monkeypatch.setattr(engine, "run", lambda cmd, args, timeout, partial=False: out)
     found = list(engine.lines_matches("mysearch", "q", 5))
     assert [(m.message_id, m.paths) for m in found] == [
         ("a@x", ["/m/cur/1", "/m/.B/cur/3"]),
@@ -263,7 +309,7 @@ LINES = "\n".join(
 def engine_output(monkeypatch):
     calls: list[list[str]] = []
 
-    def fake_run(cmd, args, timeout):
+    def fake_run(cmd, args, timeout, partial=False):
         calls.append(args)
         return LINES
 
@@ -300,7 +346,7 @@ def test_search_engine_pattern_searches_each_folder_once(server, monkeypatch):
     server.folders["INBOX"] = {i: _raw(f"m{i}@x") for i in range(1, 301)}
     server.folders["INBOX"][300] = _raw("m300@x", "bob@example.com")
     out = "\n".join(f"m{i}@x\t/M/cur/{i}" for i in range(300, 0, -1))
-    monkeypatch.setattr(engine, "run", lambda cmd, args, timeout: out)
+    monkeypatch.setattr(engine, "run", lambda cmd, args, timeout, partial=False: out)
     res = client.search_engine(CONFIG, "q", pattern="~f bob", limit=10)
     assert [r["uid"] for r in res] == ["300"]
     assert len(server.searches) == 1

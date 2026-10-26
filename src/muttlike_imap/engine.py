@@ -27,6 +27,7 @@ import os
 import posixpath
 import shlex
 import subprocess
+import sys
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 
@@ -60,8 +61,23 @@ def command_line(cmd: str, args: list[str]) -> str:
     return " ".join([cmd, *quoted])
 
 
-def run(cmd: str, args: list[str], timeout: int) -> str:
-    """Run the engine and return its standard output."""
+class EngineFailed(RuntimeError):
+    """The engine exited with a non-zero status."""
+
+
+def warn(message: str) -> None:
+    """Report a problem that does not stop the search."""
+    print(f"Warning: {message}", file=sys.stderr)
+
+
+def run(cmd: str, args: list[str], timeout: int, partial: bool = False) -> str:
+    """Run the engine and return its standard output.
+
+    With ``partial``, a failing engine that still printed something has its
+    output returned, and its error output reported as a warning: notmuch
+    exits with status 1 when some indexed files have gone (the index lags
+    behind messages moved or deleted since), yet shows all the others.
+    """
     line = command_line(cmd, args)
     try:
         result = subprocess.run(
@@ -69,7 +85,13 @@ def run(cmd: str, args: list[str], timeout: int) -> str:
         )
     except subprocess.CalledProcessError as e:
         stderr = (e.stderr or "").strip()
-        raise RuntimeError(
+        if partial and (e.stdout or "").strip():
+            warn(
+                f"search command exited with status {e.returncode}"
+                + (f":\n{stderr}" if stderr else "")
+            )
+            return e.stdout
+        raise EngineFailed(
             f"search command exited with status {e.returncode}"
             + (f": {stderr}" if stderr else "")
         ) from e
@@ -93,6 +115,36 @@ def _shown_files(node: object, out: dict[str, list[str]]) -> None:
         out[node["id"]] = files if isinstance(files, list) else [files]
 
 
+def _notmuch_files(cmd: str, ids: list[str], timeout: int) -> dict[str, list[str]]:
+    """``id -> filenames`` for the messages ``ids``, from ``notmuch show``.
+
+    If the engine fails without usable output, each message is asked for
+    on its own, and those it still cannot show are skipped with a warning.
+    """
+    files: dict[str, list[str]] = {}
+    try:
+        shown = run(
+            cmd,
+            [
+                "show",
+                "--format=json",
+                "--body=false",
+                "--entire-thread=false",
+                " or ".join(_notmuch_id(i) for i in ids),
+            ],
+            timeout,
+            partial=True,
+        )
+        _shown_files(json.loads(shown or "[]"), files)
+    except (EngineFailed, json.JSONDecodeError) as e:
+        if len(ids) == 1:
+            warn(f"skipping <{ids[0]}>: {e}")
+            return {}
+        for i in ids:
+            files.update(_notmuch_files(cmd, [i], timeout))
+    return files
+
+
 def notmuch_matches(cmd: str, query: str, timeout: int, chunk: int) -> Iterator[Match]:
     """Messages matching ``query``, newest first, ``chunk`` per engine call pair."""
     offset = 0
@@ -113,19 +165,7 @@ def notmuch_matches(cmd: str, query: str, timeout: int, chunk: int) -> Iterator[
         ids = json.loads(out or "[]")
         if not ids:
             return
-        files: dict[str, list[str]] = {}
-        shown = run(
-            cmd,
-            [
-                "show",
-                "--format=json",
-                "--body=false",
-                "--entire-thread=false",
-                " or ".join(_notmuch_id(i) for i in ids),
-            ],
-            timeout,
-        )
-        _shown_files(json.loads(shown or "[]"), files)
+        files = _notmuch_files(cmd, ids, timeout)
         for i in ids:
             yield Match(i, files.get(i, []))
         if len(ids) < chunk:
