@@ -13,7 +13,7 @@ from .client import (
 from .config import load_config
 from .parser import CompiledPattern, compile_pattern, parse_pattern
 
-__version__ = "1.2.0"
+__version__ = "1.2.1"
 
 __all__ = [
     "CompiledPattern",

@@ -4,7 +4,7 @@ All notable changes are documented here. The format is loosely based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.2.1]
 
 ### Fixed
 - Text extraction (`preview`, `--body`) no longer comes out empty for
@@ -13,6 +13,14 @@ adheres to [Semantic Versioning](https://semver.org/).
   falls back to the HTML part. HTML is rendered more cleanly (`<style>`,
   `<script>`, `<head>` and comments dropped, entities decoded), including
   for single-part HTML messages, which were returned as raw markup.
+- `--search` no longer fails when notmuch's index lists messages whose
+  files have since been moved or deleted (notmuch then exits with an
+  error but still shows the other messages): the results it did print
+  are used, its error output is reported as a warning, and if it printed
+  nothing usable each message is looked up on its own, those still
+  failing being skipped with a warning.
+- `--summary` with `--search` shows each result's folder: results come
+  from several folders, and a UID alone does not identify a message.
 
 ## [1.2.0]
 
@@ -143,7 +151,7 @@ First public release.
   variable.
 - Library API: `parse_pattern`, `search`, `list_mailboxes`, `load_config`.
 
-[Unreleased]: https://github.com/PierreSenellart/muttlike-imap/compare/v1.2.0...HEAD
+[1.2.1]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.2.1
 [1.2.0]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.2.0
 [1.1.3]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.1.3
 [1.1.2]: https://github.com/PierreSenellart/muttlike-imap/releases/tag/v1.1.2
